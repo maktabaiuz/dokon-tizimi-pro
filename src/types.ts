@@ -2,13 +2,17 @@ export interface Product {
   id: string;
   name: string;
   category: string;
-  costPrice: number; // Tan narxi
-  price: number;     // Sotish narxi
-  stock: number;     // Soni
-  image?: string;    // Rasm URL
-  icon?: string;     // Fallback Lucide icon name
-  barcode: string;   // Shtrix kod
-  lowStockThreshold?: number; // Kam qolgan ogohlantirish soni
+  costPrice: number;
+  price: number;
+  stock: number;
+  image?: string;
+  icon?: string;
+  barcode: string;
+  lowStockThreshold?: number;
+  isFeatured?: boolean;
+  featuredOrder?: number;
+  soldCount?: number;
+  discount?: number;
 }
 
 export interface CartItem {
@@ -53,8 +57,18 @@ export interface ActiveShift {
   initialCash: number;
   currentCash: number;
   terminal: number;
+  qrTotal: number;
   salesCount: number;
   isClosed: boolean;
+}
+
+export interface Cashier {
+  id: string;
+  name: string;
+  pin: string;
+  storeLabel: string;
+  role: 'owner' | 'cashier';
+  isActive: boolean;
 }
 
 export interface StoreSettings {

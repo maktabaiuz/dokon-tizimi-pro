@@ -22,7 +22,7 @@ import {
   PlusSquare,
   FileJson
 } from 'lucide-react';
-import { Product, Category, StoreSettings } from '../types';
+import { Product, Category, StoreSettings, Cashier } from '../types';
 import { exportAllData, importAllData } from '../utils/storage';
 import * as Icons from 'lucide-react';
 
@@ -30,24 +30,39 @@ interface AdminViewProps {
   products: Product[];
   categories: Category[];
   settings: StoreSettings;
+  cashiers: Cashier[];
   onAddProduct: (product: Omit<Product, 'id'>) => void;
   onUpdateProduct: (product: Product) => void;
   onDeleteProduct: (productId: string) => void;
   onUpdateSettings: (settings: StoreSettings) => void;
   onAddCategory: (category: Omit<Category, 'id'>) => void;
+  onAddCashier: (cashier: Omit<Cashier, 'id'>) => void;
+  onUpdateCashier: (cashier: Cashier) => void;
+  onDeleteCashier: (id: string) => void;
 }
 
 export default function AdminView({
   products,
   categories,
   settings,
+  cashiers,
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
   onUpdateSettings,
   onAddCategory,
+  onAddCashier,
+  onUpdateCashier,
+  onDeleteCashier,
 }: AdminViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'inventory' | 'kirim' | 'categories' | 'settings'>('inventory');
+  const [activeSubTab, setActiveSubTab] = useState<'inventory' | 'kirim' | 'categories' | 'settings' | 'cashiers' | 'vitrina'>('inventory');
+
+  // Kasir modal states
+  const [isCashierModalOpen, setIsCashierModalOpen] = useState(false);
+  const [editingCashier, setEditingCashier] = useState<Cashier | null>(null);
+  const [cashierForm, setCashierForm] = useState<Omit<Cashier, 'id'>>({
+    name: '', pin: '', storeLabel: '', role: 'cashier', isActive: true,
+  });
   
   // Kirim (stock arrival) states
   const [kirimProdId, setKirimProdId] = useState<string>('');
@@ -410,6 +425,36 @@ export default function AdminView({
             {renderIcon('Settings', 'w-4 h-4')}
             Sozlamalar
           </button>
+
+          <button
+            onClick={() => setActiveSubTab('cashiers')}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold whitespace-nowrap justify-start w-full transition-all cursor-pointer ${
+              activeSubTab === 'cashiers'
+                ? 'bg-[#2563eb] text-white shadow-md'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {renderIcon('Users', 'w-4 h-4')}
+            Kasirlar
+            <span className="ml-auto bg-[#2563eb]/10 text-[#2563eb] text-[10px] font-black px-2 py-0.5 rounded-full">
+              {cashiers.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('vitrina')}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold whitespace-nowrap justify-start w-full transition-all cursor-pointer ${
+              activeSubTab === 'vitrina'
+                ? 'bg-amber-500 text-white shadow-md'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {renderIcon('Star', 'w-4 h-4')}
+            Vitrina
+            <span className="ml-auto bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-full">
+              {products.filter(p => p.isFeatured).length}/8
+            </span>
+          </button>
         </nav>
       </aside>
 
@@ -519,6 +564,9 @@ export default function AdminView({
                       <th className="px-5 py-3 text-center">Ombordagi Soni</th>
                       <th className="px-5 py-3 text-center">Min. zaxira</th>
                       <th className="px-5 py-3 text-center">Ustama (Foyda)</th>
+                      <th className="px-5 py-3 text-center">⭐ Vitrina</th>
+                      <th className="px-5 py-3 text-center">Aksiya %</th>
+                      <th className="px-5 py-3 text-center">Sotilgan</th>
                       <th className="px-5 py-3 text-right">Amallar</th>
                     </tr>
                   </thead>
@@ -578,6 +626,51 @@ export default function AdminView({
                             <span className="text-green-600">{profit.toLocaleString()} UZS</span>{' '}
                             <span className="text-[10px] text-slate-400">({profitMargin}%)</span>
                           </td>
+
+                          {/* ⭐ Vitrina toggle */}
+                          <td className="px-5 py-4 text-center">
+                            <button
+                              onClick={() => onUpdateProduct({
+                                ...product,
+                                isFeatured: !product.isFeatured
+                              })}
+                              style={{
+                                background: product.isFeatured ? '#FEF3C7' : '#F1F5F9',
+                                color: product.isFeatured ? '#92400E' : '#64748B',
+                                border: 'none', borderRadius:'8px',
+                                padding:'4px 8px', fontSize:'11px',
+                                cursor:'pointer', fontWeight:500
+                              }}
+                            >
+                              {product.isFeatured ? '⭐ Trend' : '☆ Trend'}
+                            </button>
+                          </td>
+
+                          {/* Aksiya % */}
+                          <td className="px-5 py-4 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <input
+                                type="number"
+                                min="0"
+                                max="99"
+                                value={product.discount || 0}
+                                onChange={e => {
+                                  const val = Math.min(99, Math.max(0, parseInt(e.target.value) || 0));
+                                  onUpdateProduct({ ...product, discount: val });
+                                }}
+                                className="w-12 text-center text-xs font-bold border border-slate-200 rounded-lg py-1 focus:outline-none focus:border-[#2563eb] bg-white"
+                              />
+                              <span className="text-[10px] text-slate-400">%</span>
+                            </div>
+                          </td>
+
+                          {/* Sotilgan */}
+                          <td className="px-5 py-4 text-center">
+                            <span className={`text-xs font-bold ${(product.soldCount || 0) > 0 ? 'text-orange-600' : 'text-slate-400'}`}>
+                              {(product.soldCount || 0) > 0 ? `🔥 ${product.soldCount}` : '—'} ta
+                            </span>
+                          </td>
+
                           <td className="px-5 py-4 text-right">
                             <div className="flex justify-end gap-1.5">
                               {/* Quick stock add (+1) */}
@@ -1115,7 +1208,333 @@ export default function AdminView({
           </div>
         )}
 
+        {/* Tab: Kasirlar */}
+        {activeSubTab === 'cashiers' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h1 className="text-2xl font-bold text-[#1E293B]">Kasirlar boshqaruvi</h1>
+                <p className="text-sm text-[#64748B]">Tizimga kirish huquqi bo'lgan xodimlar ro'yxati</p>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingCashier(null);
+                  setCashierForm({ name: '', pin: '', storeLabel: '', role: 'cashier', isActive: true });
+                  setIsCashierModalOpen(true);
+                }}
+                className="bg-[#2563eb] hover:bg-[#004ac6] active:scale-95 text-white px-5 py-3 rounded-xl text-sm font-bold flex items-center gap-2 cursor-pointer transition-all shadow-md select-none shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                Yangi kasir qo'shish
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {cashiers.map(cashier => {
+                const COLORS: Record<string, { bg: string; text: string }> = {
+                  'cashier-0': { bg: '#e0e7ff', text: '#3730a3' },
+                  'cashier-1': { bg: '#dcfce7', text: '#166534' },
+                  'cashier-2': { bg: '#fef3c7', text: '#92400e' },
+                  'cashier-3': { bg: '#fce7f3', text: '#9d174d' },
+                  'cashier-4': { bg: '#e0f2fe', text: '#0c4a6e' },
+                };
+                const palette = COLORS[cashier.id] ?? { bg: '#f3e8ff', text: '#6b21a8' };
+                const initials = cashier.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
+
+                return (
+                  <div key={cashier.id} className="bg-white border border-[#c3c6d7] rounded-2xl p-5 shadow-sm flex flex-col gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full flex items-center justify-center text-base font-black shrink-0"
+                        style={{ background: palette.bg, color: palette.text }}>
+                        {initials}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-bold text-sm text-[#1E293B] truncate">{cashier.name}</p>
+                          {cashier.role === 'owner' && (
+                            <span className="text-[9px] font-black bg-[#2563eb] text-white px-2 py-0.5 rounded-full shrink-0">Egasi</span>
+                          )}
+                          {!cashier.isActive && (
+                            <span className="text-[9px] font-black bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full shrink-0">Nofaol</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-[#64748B] mt-0.5">{cashier.storeLabel}</p>
+                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">PIN: {'•'.repeat(cashier.pin.length)}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 pt-1 border-t border-slate-100">
+                      <button
+                        onClick={() => {
+                          setEditingCashier(cashier);
+                          setCashierForm({ name: cashier.name, pin: cashier.pin, storeLabel: cashier.storeLabel, role: cashier.role, isActive: cashier.isActive });
+                          setIsCashierModalOpen(true);
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border border-[#dee8ff] bg-[#f0f3ff] text-[#2563eb] text-xs font-bold hover:bg-[#dee8ff] cursor-pointer transition-colors"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" /> Tahrirlash
+                      </button>
+                      <button
+                        onClick={() => onUpdateCashier({ ...cashier, isActive: !cashier.isActive })}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border text-xs font-bold cursor-pointer transition-colors ${
+                          cashier.isActive
+                            ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                            : 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
+                        }`}
+                      >
+                        {cashier.isActive ? 'Bloklash' : 'Faollashtirish'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`"${cashier.name}" kasirini o'chirishni tasdiqlaysizmi?`)) {
+                            onDeleteCashier(cashier.id);
+                          }
+                        }}
+                        className="p-2 rounded-xl border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Tab: Vitrina boshqaruvi */}
+        {activeSubTab === 'vitrina' && (
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-2xl font-bold text-[#1E293B]">Vitrina boshqaruvi</h1>
+              <p className="text-sm text-[#64748B]">Kassada ko'rsatiladigan featured mahsulotlar tartibi (max 8 ta)</p>
+            </div>
+
+            {/* Featured products list */}
+            {(() => {
+              const featured = products
+                .filter(p => p.isFeatured)
+                .sort((a, b) => (a.featuredOrder || 0) - (b.featuredOrder || 0));
+
+              const moveItem = (index: number, direction: -1 | 1) => {
+                const targetIndex = index + direction;
+                if (targetIndex < 0 || targetIndex >= featured.length) return;
+                const a = featured[index];
+                const b = featured[targetIndex];
+                onUpdateProduct({ ...a, featuredOrder: b.featuredOrder ?? targetIndex });
+                onUpdateProduct({ ...b, featuredOrder: a.featuredOrder ?? index });
+              };
+
+              if (featured.length === 0) {
+                return (
+                  <div className="bg-white border-2 border-dashed border-amber-200 rounded-2xl p-12 text-center">
+                    <div className="text-4xl mb-3">⭐</div>
+                    <p className="text-sm font-bold text-slate-500">Hali vitrina mahsulotlari yo'q</p>
+                    <p className="text-xs text-slate-400 mt-1">Mahsulotlar jadvalida ⭐ tugmasini bosib qo'shing</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  {featured.length >= 8 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs font-bold text-amber-700 flex items-center gap-2">
+                      <span>⚠️</span>
+                      Maksimal 8 ta mahsulot vitrinada ko'rsatilishi mumkin. Yangi qo'shish uchun avval birini olib tashlang.
+                    </div>
+                  )}
+                  {featured.map((product, index) => (
+                    <div
+                      key={product.id}
+                      className="bg-white border border-[#E2E8F0] rounded-2xl p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow"
+                    >
+                      {/* Order number */}
+                      <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-sm font-black shrink-0">
+                        {index + 1}
+                      </div>
+
+                      {/* Product image/icon */}
+                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center shrink-0">
+                        {product.image
+                          ? <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                          : <span className="text-2xl">{product.icon || '📦'}</span>
+                        }
+                      </div>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm text-[#1E293B] truncate">{product.name}</p>
+                        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                          <span className="text-xs text-[#64748B]">{product.price.toLocaleString()} so'm</span>
+                          {product.discount && product.discount > 0 && (
+                            <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
+                              -{product.discount}% aksiya
+                            </span>
+                          )}
+                          {(product.soldCount || 0) > 0 && (
+                            <span className="text-[10px] text-slate-400">🔥 {product.soldCount} ta sotilgan</span>
+                          )}
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            product.stock > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
+                          }`}>
+                            Ombor: {product.stock} ta
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Move buttons */}
+                      <div className="flex flex-col gap-1 shrink-0">
+                        <button
+                          onClick={() => moveItem(index, -1)}
+                          disabled={index === 0}
+                          className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer transition-colors text-slate-600 text-sm font-bold"
+                          title="Yuqoriga"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          onClick={() => moveItem(index, 1)}
+                          disabled={index === featured.length - 1}
+                          className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer transition-colors text-slate-600 text-sm font-bold"
+                          title="Pastga"
+                        >
+                          ▼
+                        </button>
+                      </div>
+
+                      {/* Remove from vitrina */}
+                      <button
+                        onClick={() => onUpdateProduct({ ...product, isFeatured: false, featuredOrder: undefined })}
+                        className="p-2 rounded-xl border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 cursor-pointer transition-colors shrink-0"
+                        title="Vitrinadan olib tashlash"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
       </div>
+
+      {/* Kasir ADD/EDIT Modal */}
+      {isCashierModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-[420px] rounded-[24px] shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-[#1E293B]">
+            <div className="p-5 border-b border-[#E2E8F0] flex justify-between items-center bg-slate-50">
+              <h3 className="text-sm font-bold text-[#1E293B]">
+                {editingCashier ? 'Kasir ma\'lumotlarini tahrirlash' : 'Yangi kasir qo\'shish'}
+              </h3>
+              <button onClick={() => setIsCashierModalOpen(false)} className="p-1.5 hover:bg-slate-200 rounded-full text-slate-500">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (cashierForm.pin.length !== 4) { alert('PIN aniq 4 raqamdan iborat bo\'lishi kerak!'); return; }
+                if (editingCashier) {
+                  onUpdateCashier({ ...editingCashier, ...cashierForm });
+                } else {
+                  onAddCashier(cashierForm);
+                }
+                setIsCashierModalOpen(false);
+              }}
+              className="p-6 space-y-4"
+            >
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#64748B]">Kasir ismi</label>
+                <input
+                  type="text"
+                  required
+                  value={cashierForm.name}
+                  onChange={e => setCashierForm({ ...cashierForm, name: e.target.value })}
+                  placeholder="Asadbek Toshmatov..."
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-semibold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#64748B]">Do'kon / Filial</label>
+                  <input
+                    type="text"
+                    required
+                    value={cashierForm.storeLabel}
+                    onChange={e => setCashierForm({ ...cashierForm, storeLabel: e.target.value })}
+                    placeholder="1-Do'kon..."
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-semibold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#64748B]">PIN-kod (4 raqam)</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={4}
+                    value={cashierForm.pin}
+                    onChange={e => setCashierForm({ ...cashierForm, pin: e.target.value.replace(/\D/g, '') })}
+                    placeholder="1234"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-bold font-mono tracking-widest focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-base text-center"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#64748B]">Rol</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['cashier', 'owner'] as const).map(role => (
+                    <button
+                      key={role}
+                      type="button"
+                      onClick={() => setCashierForm({ ...cashierForm, role })}
+                      className={`py-2.5 rounded-xl border-2 text-xs font-bold transition-all cursor-pointer ${
+                        cashierForm.role === role
+                          ? 'border-[#2563eb] bg-[#eeefff] text-[#2563eb]'
+                          : 'border-[#E2E8F0] bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {role === 'owner' ? 'Egasi' : 'Kassir'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between px-4 py-3 bg-slate-50 rounded-xl border border-[#E2E8F0]">
+                <span className="text-xs font-bold text-[#64748B]">Faol holat</span>
+                <button
+                  type="button"
+                  onClick={() => setCashierForm({ ...cashierForm, isActive: !cashierForm.isActive })}
+                  className={`w-12 h-6 rounded-full transition-colors cursor-pointer relative ${cashierForm.isActive ? 'bg-[#2563eb]' : 'bg-slate-300'}`}
+                >
+                  <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${cashierForm.isActive ? 'left-7' : 'left-1'}`} />
+                </button>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCashierModalOpen(false)}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-bold py-2.5 rounded-xl text-xs cursor-pointer select-none transition-all"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-[#2563eb] hover:bg-[#004ac6] text-white font-bold py-2.5 rounded-xl text-xs cursor-pointer select-none transition-all shadow-md"
+                >
+                  {editingCashier ? 'Saqlash' : 'Qo\'shish'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Product ADD/EDIT Modal Frame */}
       {isProductModalOpen && (

@@ -1,4 +1,4 @@
-import { Product, Category, Sale, Debt, StoreSettings } from '../types';
+import { Product, Category, Sale, Debt, StoreSettings, Cashier } from '../types';
 
 const KEYS = {
   products: 'pos_products',
@@ -6,6 +6,7 @@ const KEYS = {
   sales: 'pos_sales',
   debts: 'pos_debts',
   settings: 'pos_settings',
+  cashiers: 'pos_cashiers',
 };
 
 export function loadProducts(): Product[] | null {
@@ -46,6 +47,14 @@ export function loadSettings(): StoreSettings | null {
 }
 export function saveSettings(data: StoreSettings) {
   localStorage.setItem(KEYS.settings, JSON.stringify(data));
+}
+
+export function loadCashiers(): Cashier[] | null {
+  try { const d = localStorage.getItem(KEYS.cashiers); return d ? JSON.parse(d) : null; }
+  catch { return null; }
+}
+export function saveCashiers(data: Cashier[]) {
+  localStorage.setItem(KEYS.cashiers, JSON.stringify(data));
 }
 
 export function exportAllData(): string {

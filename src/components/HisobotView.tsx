@@ -21,6 +21,9 @@ import {
   Phone,
   CheckCircle2,
   CreditCard,
+  Printer,
+  QrCode,
+  Banknote,
 } from 'lucide-react';
 import { Product, Debt, Sale, StoreSettings, ActiveShift } from '../types';
 import * as Icons from 'lucide-react';
@@ -57,9 +60,24 @@ export default function HisobotView({
   // Return sale states
   const [viewingReceipt, setViewingReceipt] = useState<Sale | null>(null);
 
+  // Smena yopish modal
+  const [showCloseShiftModal, setShowCloseShiftModal] = useState(false);
+
   // Debt payment states
   const [payingDebtId, setPayingDebtId] = useState<string | null>(null);
   const [payAmountInput, setPayAmountInput] = useState<string>('');
+
+  // Smena hisobot breakdown (bugungi sotuvlardan)
+  const shiftNaqdTotal = sales
+    .filter(s => s.timestamp.substring(0, 10) === today && s.paymentMethod === 'Naqd')
+    .reduce((a, s) => a + s.totalAmount, 0);
+  const shiftKartaTotal = sales
+    .filter(s => s.timestamp.substring(0, 10) === today && s.paymentMethod === 'Karta')
+    .reduce((a, s) => a + s.totalAmount, 0);
+  const shiftNasiyaTotal = sales
+    .filter(s => s.timestamp.substring(0, 10) === today && s.paymentMethod === 'Nasiya')
+    .reduce((a, s) => a + s.totalAmount, 0);
+  const shiftJamiTotal = shiftNaqdTotal + shiftKartaTotal + activeShift.qrTotal + shiftNasiyaTotal;
 
   const renderIcon = (name: string, className: string = 'w-4 h-4') => {
     const LucideIcon = (Icons as any)[name] || Icons.Box;
@@ -372,12 +390,7 @@ export default function HisobotView({
           </div>
 
           <button
-            onClick={() => {
-              if (confirm("Chindan ham joriy smenani raqamli ravishda yakunlab, kassa hisobotini yopmoqchimisiz?")) {
-                onCloseShift();
-                alert(`Smena muvaffaqiyatli yopildi! Kassa qiymatlari zaxiraga tiklandi.`);
-              }
-            }}
+            onClick={() => setShowCloseShiftModal(true)}
             className="w-full mt-6 bg-white hover:bg-slate-50 text-slate-900 py-3 rounded-xl font-bold flex items-center justify-center gap-2 select-none cursor-pointer transition-all shadow active:scale-95 text-xs"
           >
             <Unlock className="w-4 h-4 text-orange-600" />
@@ -625,6 +638,122 @@ export default function HisobotView({
           </table>
         </div>
       </section>
+
+      {/* SMENA YOPISH MODAL */}
+      {showCloseShiftModal && (
+        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 print:hidden-overlay">
+          <style>{`
+            @media print {
+              body > * { visibility: hidden !important; }
+              #smena-yakuniy-hisobot { visibility: visible !important; position: fixed !important; top: 0; left: 0; width: 100%; padding: 32px; }
+              #smena-yakuniy-hisobot * { visibility: visible !important; }
+              .smena-print-hide { display: none !important; }
+            }
+          `}</style>
+
+          <div
+            id="smena-yakuniy-hisobot"
+            className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
+          >
+            {/* Modal header */}
+            <div className="bg-gradient-to-r from-[#1E2933] to-[#263143] px-6 py-5 text-white flex justify-between items-start smena-print-hide-wrapper">
+              <div>
+                <h2 className="font-black text-base tracking-wide">Smena Yakuniy Hisobot</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Smenani yopishdan oldin tekshiring</p>
+              </div>
+              <button
+                onClick={() => setShowCloseShiftModal(false)}
+                className="smena-print-hide p-1 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div className="p-6 space-y-0 text-sm divide-y divide-slate-100">
+              {/* Smena ma'lumotlari */}
+              <div className="pb-4 space-y-2.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 text-xs font-medium flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" /> Smena boshlanish vaqti
+                  </span>
+                  <span className="font-bold text-[#1E293B] text-xs">{activeShift.startTime}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 text-xs font-medium flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5" /> Mas&apos;ul kassir
+                  </span>
+                  <span className="font-bold text-[#1E293B] text-xs">{activeShift.cashier}</span>
+                </div>
+              </div>
+
+              {/* To'lov turlari bo'yicha */}
+              <div className="py-4 space-y-2.5">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-3">To&apos;lov turlari bo&apos;yicha</p>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600 text-xs font-medium flex items-center gap-1.5">
+                    <Banknote className="w-3.5 h-3.5 text-green-600" /> Naqd sotuvlar
+                  </span>
+                  <span className="font-bold text-green-700 text-xs font-mono">{shiftNaqdTotal.toLocaleString()} UZS</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600 text-xs font-medium flex items-center gap-1.5">
+                    <CreditCard className="w-3.5 h-3.5 text-blue-600" /> Karta sotuvlar
+                  </span>
+                  <span className="font-bold text-blue-700 text-xs font-mono">{shiftKartaTotal.toLocaleString()} UZS</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600 text-xs font-medium flex items-center gap-1.5">
+                    <QrCode className="w-3.5 h-3.5 text-purple-600" /> QR sotuvlar
+                  </span>
+                  <span className="font-bold text-purple-700 text-xs font-mono">{activeShift.qrTotal.toLocaleString()} UZS</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600 text-xs font-medium flex items-center gap-1.5">
+                    <Wallet className="w-3.5 h-3.5 text-amber-600" /> Nasiya sotuvlar
+                  </span>
+                  <span className="font-bold text-amber-700 text-xs font-mono">{shiftNasiyaTotal.toLocaleString()} UZS</span>
+                </div>
+              </div>
+
+              {/* Jami */}
+              <div className="pt-4 space-y-2.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 text-xs font-medium flex items-center gap-1.5">
+                    <ShoppingBag className="w-3.5 h-3.5" /> Jami sotuvlar soni
+                  </span>
+                  <span className="font-bold text-[#1E293B] text-xs">{activeShift.salesCount} ta</span>
+                </div>
+                <div className="flex justify-between items-center bg-[#f0f3ff] px-4 py-3 rounded-xl">
+                  <span className="text-[#2563eb] text-xs font-black uppercase tracking-wide">Jami summa</span>
+                  <span className="font-black text-[#2563eb] text-sm font-mono">{shiftJamiTotal.toLocaleString()} UZS</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal footer tugmalari */}
+            <div className="smena-print-hide px-6 pb-6 flex gap-3">
+              <button
+                onClick={() => window.print()}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[#c3c6d7] bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold cursor-pointer transition-all"
+              >
+                <Printer className="w-4 h-4" />
+                Chop etish
+              </button>
+              <button
+                onClick={() => {
+                  onCloseShift();
+                  setShowCloseShiftModal(false);
+                }}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold cursor-pointer transition-all"
+              >
+                <Unlock className="w-4 h-4" />
+                Smenani yop
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* VIEW RECEIPT THERMAL MODAL CONTAINER */}
       {viewingReceipt && (

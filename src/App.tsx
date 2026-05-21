@@ -1,22 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  ShoppingBag, 
-  Settings, 
-  BarChart3, 
-  QrCode, 
-  LogOut, 
-  UserCircle2, 
+import {
+  ShoppingBag,
+  Settings,
+  BarChart3,
+  QrCode,
+  LogOut,
+  UserCircle2,
   Store,
-  FolderLock
+  Clock,
+  Sparkles,
 } from 'lucide-react';
-import { Product, Category, CartItem, Debt, Sale, ActiveShift, StoreSettings } from './types';
-import { loadProducts, saveProducts, loadCategories, saveCategories, loadSales, saveSales, loadDebts, saveDebts, loadSettings, saveSettings } from './utils/storage';
-import { 
-  INITIAL_PRODUCTS, 
-  INITIAL_CATEGORIES, 
-  INITIAL_DEBTS, 
-  INITIAL_SALES, 
-  INITIAL_SETTINGS 
+import { Product, Category, CartItem, Debt, Sale, ActiveShift, StoreSettings, Cashier } from './types';
+import { loadProducts, saveProducts, loadCategories, saveCategories, loadSales, saveSales, loadDebts, saveDebts, loadSettings, saveSettings, loadCashiers, saveCashiers } from './utils/storage';
+import {
+  INITIAL_PRODUCTS,
+  INITIAL_CATEGORIES,
+  INITIAL_DEBTS,
+  INITIAL_SALES,
+  INITIAL_SETTINGS,
+  INITIAL_CASHIERS,
 } from './data';
 
 import LoginView from './components/LoginView';
@@ -24,11 +26,18 @@ import KassaView from './components/KassaView';
 import AdminView from './components/AdminView';
 import HisobotView from './components/HisobotView';
 import BarkodView from './components/BarkodView';
+import SmenaView from './components/SmenaView';
+import AIView from './components/AIView';
 
 export default function App() {
   // Authentication Gate State
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [cashierName, setCashierName] = useState<string>('');
+  const [cashierRole, setCashierRole] = useState<'owner' | 'cashier'>('cashier');
+
+  // Cashiers database
+  const [cashiers, setCashiers] = useState<Cashier[]>(() => loadCashiers() ?? INITIAL_CASHIERS);
+  useEffect(() => { saveCashiers(cashiers); }, [cashiers]);
 
   // Primary shared databases
   const [products, setProducts] = useState<Product[]>(() => loadProducts() ?? INITIAL_PRODUCTS);
@@ -38,10 +47,11 @@ export default function App() {
   
   // Shared config & session values
   const [settings, setSettings] = useState<StoreSettings>(() => loadSettings() ?? INITIAL_SETTINGS);
-  const [activeTab, setActiveTab] = useState<'kassa' | 'admin' | 'hisobot' | 'barkod'>('kassa');
+  const [activeTab, setActiveTab] = useState<'kassa' | 'admin' | 'hisobot' | 'barkod' | 'smena' | 'ai'>('kassa');
   
-  // Basket State
-  const [cart, setCart] = useState<CartItem[]>([]);
+  // Multi-cart state (3 parallel carts)
+  const [carts, setCarts] = useState<CartItem[][]>([[], [], []]);
+  const [activeCart, setActiveCart] = useState<0 | 1 | 2>(0);
 
   useEffect(() => { saveProducts(products); }, [products]);
   useEffect(() => { saveCategories(categories); }, [categories]);
@@ -56,13 +66,15 @@ export default function App() {
     initialCash: 1200000,
     currentCash: 1245000,
     terminal: 1890000,
+    qrTotal: 0,
     salesCount: 142,
     isClosed: false,
   });
 
   // Action: Authenticate Cashier
-  const handleLoginSuccess = (name: string) => {
-    setCashierName(name);
+  const handleLoginSuccess = (cashier: Cashier) => {
+    setCashierName(cashier.name);
+    setCashierRole(cashier.role);
     setIsLoggedIn(true);
     setActiveTab('kassa');
   };
@@ -70,58 +82,73 @@ export default function App() {
   const handleLogout = () => {
     setIsLoggedIn(false);
     setCashierName('');
+    setCashierRole('cashier');
+  };
+
+  // Cashier CRUD
+  const handleAddCashier = (data: Omit<Cashier, 'id'>) => {
+    const newCashier: Cashier = { ...data, id: `cashier-${Date.now()}` };
+    setCashiers(prev => [...prev, newCashier]);
+  };
+  const handleUpdateCashier = (updated: Cashier) => {
+    setCashiers(prev => prev.map(c => c.id === updated.id ? updated : c));
+  };
+  const handleDeleteCashier = (id: string) => {
+    setCashiers(prev => prev.filter(c => c.id !== id));
   };
 
   // Action: Add Product to Basket (Kassa view)
   const handleAddToCart = (product: Product) => {
-    setCart((prevCart) => {
-      const match = prevCart.find((item) => item.product.id === product.id);
+    setCarts(prev => {
+      const current = prev[activeCart];
+      const match = current.find(item => item.product.id === product.id);
       if (match) {
-        // Stop adding if it exceeds actual stock levels
         if (match.quantity >= product.stock) {
           alert(`Ogohlantirish: Omborda ushbu tovardan ortiqcha soni mavjud emas! Maksimal: ${product.stock} ta`);
-          return prevCart;
+          return prev;
         }
-        return prevCart.map((item) =>
-          item.product.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
+        return prev.map((c, i) =>
+          i === activeCart
+            ? c.map(item => item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item)
+            : c
         );
       }
-      return [...prevCart, { product, quantity: 1 }];
+      return prev.map((c, i) => i === activeCart ? [...c, { product, quantity: 1 }] : c);
     });
   };
 
   // Action: Increment/Decrement quantities in shopping cart
   const handleUpdateCartQuantity = (productId: string, delta: number) => {
-    setCart((prevCart) =>
-      prevCart
-        .map((item) => {
-          if (item.product.id === productId) {
-            const nextQty = item.quantity + delta;
-            return { ...item, quantity: nextQty };
-          }
-          return item;
-        })
-        .filter((item) => item.quantity > 0)
+    setCarts(prev =>
+      prev.map((c, i) =>
+        i === activeCart
+          ? c.map(item => item.product.id === productId ? { ...item, quantity: item.quantity + delta } : item)
+               .filter(item => item.quantity > 0)
+          : c
+      )
     );
   };
 
   const handleClearCart = () => {
-    setCart([]);
+    setCarts(prev => prev.map((c, i) => i === activeCart ? [] : c));
   };
 
   // Action: Checkout / Complete Purchase Operation
   const handleCheckoutSubmit = (paymentMethod: 'Naqd' | 'Karta' | 'Nasiya', customerName: string, discountPercent: number, customerPhone: string) => {
-    const totalAmount = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
+    const currentCart = carts[activeCart];
+    const totalAmount = currentCart.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
     const finalAmount = Math.round(totalAmount - (totalAmount * discountPercent) / 100);
 
-    // 1. Deduct stock levels from general product database
+    // 1. Deduct stock levels and increment soldCount
     setProducts((prevProducts) =>
       prevProducts.map((p) => {
-        const cartItem = cart.find((item) => item.product.id === p.id);
+        const cartItem = currentCart.find((item) => item.product.id === p.id);
         if (cartItem) {
-          return { ...p, stock: Math.max(0, p.stock - cartItem.quantity) };
+          return {
+            ...p,
+            stock: Math.max(0, p.stock - cartItem.quantity),
+            soldCount: (p.soldCount || 0) + cartItem.quantity,
+          };
         }
         return p;
       })
@@ -133,7 +160,7 @@ export default function App() {
       id: newSaleId,
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
       cashier: cashierName || 'Asadbek O.',
-      items: cart.map(item => ({
+      items: currentCart.map(item => ({
         productId: item.product.id,
         name: item.product.name,
         quantity: item.quantity,
@@ -168,8 +195,8 @@ export default function App() {
       terminal: paymentMethod === 'Karta' ? prev.terminal + finalAmount : prev.terminal,
     }));
 
-    // 5. Clear shopping session
-    setCart([]);
+    // 5. Clear only the active cart
+    setCarts(prev => prev.map((c, i) => i === activeCart ? [] : c));
   };
 
   // Action: Add new product to inventory database (Admin view)
@@ -215,6 +242,7 @@ export default function App() {
       initialCash: 1200000,
       currentCash: 1200000,
       terminal: 0,
+      qrTotal: 0,
       salesCount: 0,
       isClosed: false,
     });
@@ -260,13 +288,14 @@ export default function App() {
   };
 
   const lowStockCount = products.filter((p: Product) => p.stock > 0 && p.stock <= (p.lowStockThreshold || 5)).length;
+  const isOwner = cashierRole === 'owner';
 
   // Landing guard page (PIN code security screen matching visual mockups)
   if (!isLoggedIn) {
     return (
-      <LoginView 
-        correctPin={settings.operatorPin} 
-        onLoginSuccess={handleLoginSuccess} 
+      <LoginView
+        cashiers={cashiers}
+        onLoginSuccess={handleLoginSuccess}
       />
     );
   }
@@ -305,47 +334,79 @@ export default function App() {
             >
               <ShoppingBag className="w-4 h-4" />
               <span className="hidden sm:inline">Kassa</span>
-              {lowStockCount > 0 && (
+              {isOwner && lowStockCount > 0 && (
                 <span className="bg-amber-400 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none">
                   {lowStockCount}
                 </span>
               )}
             </button>
 
-            <button
-              onClick={() => setActiveTab('admin')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-                activeTab === 'admin'
-                  ? 'bg-[#2563eb]/10 text-[#2563eb]'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <Settings className="w-4 h-4" />
-              <span className="hidden sm:inline">Admin</span>
-            </button>
+            {!isOwner && (
+              <button
+                onClick={() => setActiveTab('smena')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  activeTab === 'smena'
+                    ? 'bg-[#2563eb]/10 text-[#2563eb]'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <Clock className="w-4 h-4" />
+                <span className="hidden sm:inline">Smena</span>
+              </button>
+            )}
+
+            {isOwner && (
+              <button
+                onClick={() => setActiveTab('admin')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  activeTab === 'admin'
+                    ? 'bg-[#2563eb]/10 text-[#2563eb]'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <Settings className="w-4 h-4" />
+                <span className="hidden sm:inline">Admin</span>
+              </button>
+            )}
+
+            {isOwner && (
+              <button
+                onClick={() => setActiveTab('hisobot')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  activeTab === 'hisobot'
+                    ? 'bg-[#2563eb]/10 text-[#2563eb]'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span className="hidden sm:inline">Hisobot</span>
+              </button>
+            )}
+
+            {isOwner && (
+              <button
+                onClick={() => setActiveTab('barkod')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  activeTab === 'barkod'
+                    ? 'bg-[#2563eb]/10 text-[#2563eb]'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <QrCode className="w-4 h-4" />
+                <span className="hidden sm:inline">Barkod</span>
+              </button>
+            )}
 
             <button
-              onClick={() => setActiveTab('hisobot')}
+              onClick={() => setActiveTab('ai')}
               className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-                activeTab === 'hisobot'
-                  ? 'bg-[#2563eb]/10 text-[#2563eb]'
+                activeTab === 'ai'
+                  ? 'bg-violet-100 text-violet-700'
                   : 'text-slate-600 hover:bg-slate-50'
               }`}
             >
-              <BarChart3 className="w-4 h-4" />
-              <span className="hidden sm:inline">Hisobot</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('barkod')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-                activeTab === 'barkod'
-                  ? 'bg-[#2563eb]/10 text-[#2563eb]'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <QrCode className="w-4 h-4" />
-              <span className="hidden sm:inline">Barkod</span>
+              <Sparkles className="w-4 h-4" />
+              <span className="hidden sm:inline">AI</span>
             </button>
           </nav>
 
@@ -379,7 +440,10 @@ export default function App() {
           <KassaView
             products={products}
             categories={categories}
-            cart={cart}
+            cart={carts[activeCart]}
+            carts={carts}
+            activeCart={activeCart}
+            onSetActiveCart={setActiveCart}
             onAddToCart={handleAddToCart}
             onUpdateCartQuantity={handleUpdateCartQuantity}
             onClearCart={handleClearCart}
@@ -392,11 +456,15 @@ export default function App() {
             products={products}
             categories={categories}
             settings={settings}
+            cashiers={cashiers}
             onAddProduct={handleAddProduct}
             onUpdateProduct={handleUpdateProduct}
             onDeleteProduct={handleDeleteProduct}
             onUpdateSettings={handleUpdateSettings}
             onAddCategory={handleAddCategory}
+            onAddCashier={handleAddCashier}
+            onUpdateCashier={handleUpdateCashier}
+            onDeleteCashier={handleDeleteCashier}
           />
         )}
 
@@ -413,8 +481,25 @@ export default function App() {
         )}
 
         {activeTab === 'barkod' && (
-          <BarkodView 
-            products={products} 
+          <BarkodView
+            products={products}
+          />
+        )}
+
+        {activeTab === 'smena' && (
+          <SmenaView
+            cashierName={cashierName}
+            sales={sales}
+            activeShift={activeShift}
+            onCloseShift={handleCloseShift}
+          />
+        )}
+
+        {activeTab === 'ai' && (
+          <AIView
+            products={products}
+            settings={settings}
+            sales={sales}
           />
         )}
       </main>

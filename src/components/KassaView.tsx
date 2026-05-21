@@ -26,16 +26,28 @@ interface KassaViewProps {
   products: Product[];
   categories: Category[];
   cart: CartItem[];
+  carts: CartItem[][];
+  activeCart: 0 | 1 | 2;
+  onSetActiveCart: (idx: 0 | 1 | 2) => void;
   onAddToCart: (product: Product) => void;
   onUpdateCartQuantity: (productId: string, delta: number) => void;
   onClearCart: () => void;
   onCheckout: (paymentMethod: 'Naqd' | 'Karta' | 'Nasiya', customerName: string, discountPercent: number, customerPhone: string) => void;
 }
 
+const CART_TABS = [
+  { label: 'Mijoz 1', color: '#2563EB', bg: '#EEF2FF' },
+  { label: 'Mijoz 2', color: '#F59E0B', bg: '#FEF3C7' },
+  { label: 'Mijoz 3', color: '#64748B', bg: '#F1F5F9' },
+];
+
 export default function KassaView({
   products,
   categories,
   cart,
+  carts,
+  activeCart,
+  onSetActiveCart,
   onAddToCart,
   onUpdateCartQuantity,
   onClearCart,
@@ -66,11 +78,25 @@ export default function KassaView({
   // Filter products by category and search term
   const filteredProducts = products.filter(product => {
     const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory;
-    const matchesSearch = 
-      product.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const matchesSearch =
+      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       product.barcode.includes(searchQuery);
     return matchesCategory && matchesSearch;
   });
+
+  // Vitrina (featured) products
+  const featuredProducts = products
+    .filter(p => p.isFeatured && p.stock > 0)
+    .sort((a, b) => (a.featuredOrder || 0) - (b.featuredOrder || 0));
+
+  // Top 3 most sold — for 🔥 badge in catalog
+  const topSoldIds = new Set(
+    [...products]
+      .filter(p => (p.soldCount || 0) > 0)
+      .sort((a, b) => (b.soldCount || 0) - (a.soldCount || 0))
+      .slice(0, 3)
+      .map(p => p.id)
+  );
 
   // Automatically add item if barcode is fully scanned/matched
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -284,8 +310,52 @@ export default function KassaView({
             </div>
           )}
 
-          {/* Main Dynamic Product Grid */}
+          {/* ⭐ Vitrina — Trend Mahsulotlar */}
+          {featuredProducts.length > 0 && (
+            <div style={{marginBottom: '24px'}}>
+              <h2 style={{fontSize:'16px', fontWeight:600, marginBottom:'12px'}}>
+                ⭐ Trend Mahsulotlar
+              </h2>
+              <div style={{display:'flex', gap:'12px', overflowX:'auto', paddingBottom:'8px'}}>
+                {featuredProducts.map(product => (
+                  <div key={product.id}
+                    onClick={() => onAddToCart(product)}
+                    style={{minWidth:'160px', height:'220px',
+                      borderRadius:'16px', overflow:'hidden',
+                      position:'relative', cursor:'pointer',
+                      flexShrink:0, border:'1px solid #E2E8F0'}}>
+                    <img src={product.image} alt={product.name}
+                      style={{width:'100%', height:'100%', objectFit:'cover'}}/>
+                    <div style={{position:'absolute', bottom:0,
+                      left:0, right:0, padding:'12px',
+                      background:'linear-gradient(transparent, rgba(0,0,0,0.8))',
+                      color:'white'}}>
+                      <div style={{fontSize:'13px', fontWeight:500}}>{product.name}</div>
+                      <div style={{fontSize:'16px', fontWeight:700}}>
+                        {product.price.toLocaleString()} so'm
+                      </div>
+                      <div style={{fontSize:'11px', opacity:0.8}}>
+                        🔥 {product.soldCount ?? 0} ta sotilgan
+                      </div>
+                    </div>
+                    {product.discount ? (
+                      <div style={{position:'absolute', top:'8px',
+                        left:'8px', background:'#DC2626',
+                        color:'white', borderRadius:'6px',
+                        padding:'2px 6px', fontSize:'11px',
+                        fontWeight:700}}>
+                        -{product.discount}%
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Barcha Mahsulotlar */}
           <div className="flex-1 min-h-[250px] pb-6">
+            <h2 className="text-sm font-black text-[#1E293B] mb-3">Barcha Mahsulotlar</h2>
             {filteredProducts.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-12 text-center h-full border-2 border-dashed border-[#E2E8F0] bg-white rounded-2xl">
                 <p className="text-[#64748B] text-sm font-medium">Bunday mahsulot topilmadi</p>
@@ -296,6 +366,7 @@ export default function KassaView({
                 {filteredProducts.map((product) => {
                   const isOutOfStock = product.stock <= 0;
                   const isLowStock = product.stock > 0 && product.stock <= (product.lowStockThreshold || 5);
+                  const isTopSold = topSoldIds.has(product.id);
                   
                   return (
                     <div
@@ -307,6 +378,13 @@ export default function KassaView({
                           : 'hover:shadow-md border-[#E2E8F0] hover:border-[#2563eb]/40 active:scale-97'
                       }`}
                     >
+                      {/* 🔥 Top-sold badge */}
+                      {isTopSold && !isOutOfStock && (
+                        <div className="absolute top-3 left-3 z-10 bg-orange-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full">
+                          🔥 Top
+                        </div>
+                      )}
+
                       {/* Product Stock Status Ribbon */}
                       <div className="absolute top-3 right-3 z-10">
                         {isOutOfStock ? (
@@ -364,8 +442,46 @@ export default function KassaView({
         </div>
 
         {/* Right Area: Checkout Basket Panel (40%) */}
-        <aside className="lg:w-[38%] flex flex-col bg-[#F0F3FF] p-6 min-h-0">
-          
+        <aside className="lg:w-[38%] flex flex-col bg-[#F0F3FF] min-h-0">
+
+          {/* Mijoz tablari */}
+          <div className="flex border-b border-[#CBD5E1] bg-white shrink-0">
+            {CART_TABS.map((tab, i) => {
+              const count = carts[i].reduce((a, item) => a + item.quantity, 0);
+              const isActive = activeCart === i;
+              return (
+                <button
+                  key={i}
+                  onClick={() => onSetActiveCart(i as 0 | 1 | 2)}
+                  className="flex-1 py-2.5 px-2 flex flex-col items-center gap-0.5 transition-all cursor-pointer relative"
+                  style={{ borderBottom: isActive ? `2px solid ${tab.color}` : '2px solid transparent' }}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: tab.color }} />
+                    <span
+                      className="text-[11px] font-bold truncate"
+                      style={{ color: isActive ? tab.color : '#64748B' }}
+                    >
+                      {count > 0 ? `${tab.label}` : tab.label}
+                    </span>
+                    {count > 0 && (
+                      <span
+                        className="text-[9px] font-black px-1.5 py-0.5 rounded-full text-white leading-none"
+                        style={{ background: tab.color }}
+                      >
+                        {count}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[9px]" style={{ color: isActive ? tab.color : '#94A3B8' }}>
+                    {count > 0 ? `${count} ta mahsulot` : "Bo'sh"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-col flex-1 p-6 min-h-0">
           {/* Header */}
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#CBD5E1]">
             <h2 className="text-lg font-bold text-[#1E293B] flex items-center gap-2">
@@ -505,6 +621,7 @@ export default function KassaView({
               Savdoni yakunla
             </button>
           </div>
+          </div>{/* /flex flex-col flex-1 p-6 */}
         </aside>
       </div>
 
@@ -630,23 +747,59 @@ export default function KassaView({
 
                   {/* Cash received calculator for Cash payments */}
                   {paymentMethod === 'Naqd' && (
-                    <div className="space-y-3 bg-slate-50 p-4 border border-[#E2E8F0] rounded-xl">
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-[#64748B] block">Qabul qilingan naqd pul</label>
-                        <input
-                          type="number"
-                          value={cashReceived}
-                          onChange={(e) => setCashReceived(e.target.value)}
-                          placeholder={`${totalAmount} (kamida)`}
-                          className="w-full px-4 py-2 bg-white border border-[#CBD5E1] rounded-lg font-mono focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-base font-bold text-[#1E293B]"
-                        />
-                      </div>
-                      <div className="flex justify-between items-center pt-2 text-xs font-medium border-t border-slate-200">
-                        <span className="text-[#64748B]">Qaytariladigan pul (Qaytim):</span>
-                        <span className={`text-base font-black ${refundAmount > 0 ? 'text-green-600' : 'text-slate-500'}`}>
-                          {refundAmount.toLocaleString()} UZS
-                        </span>
-                      </div>
+                    <div style={{
+                      background:'#F8F9FA', borderRadius:'12px',
+                      padding:'12px', marginBottom:'12px'
+                    }}>
+                      <label style={{
+                        fontSize:'12px', color:'#64748B',
+                        fontWeight:500, display:'block',
+                        marginBottom:'6px'
+                      }}>
+                        Mijoz bergan pul (so'm)
+                      </label>
+                      <input
+                        type="number"
+                        placeholder={totalAmount.toString()}
+                        value={cashReceived}
+                        onChange={e => setCashReceived(e.target.value)}
+                        style={{
+                          width:'100%', padding:'10px 12px',
+                          borderRadius:'10px', border:'1px solid #E2E8F0',
+                          fontSize:'16px', fontWeight:600,
+                          outline:'none', boxSizing:'border-box'
+                        }}
+                      />
+                      {Number(cashReceived) >= totalAmount && cashReceived !== '' && (
+                        <div style={{
+                          marginTop:'8px', padding:'8px 12px',
+                          background:'#DCFCE7', borderRadius:'8px',
+                          display:'flex', justifyContent:'space-between',
+                          alignItems:'center'
+                        }}>
+                          <span style={{fontSize:'13px', color:'#166534', fontWeight:500}}>
+                            Qaytim:
+                          </span>
+                          <span style={{fontSize:'18px', color:'#16A34A', fontWeight:700}}>
+                            {(Number(cashReceived) - totalAmount).toLocaleString('uz-UZ')} so'm
+                          </span>
+                        </div>
+                      )}
+                      {Number(cashReceived) < totalAmount && cashReceived !== '' && (
+                        <div style={{
+                          marginTop:'8px', padding:'8px 12px',
+                          background:'#FEE2E2', borderRadius:'8px',
+                          display:'flex', justifyContent:'space-between',
+                          alignItems:'center'
+                        }}>
+                          <span style={{fontSize:'13px', color:'#991B1B', fontWeight:500}}>
+                            Yetishmaydi:
+                          </span>
+                          <span style={{fontSize:'18px', color:'#DC2626', fontWeight:700}}>
+                            {(totalAmount - Number(cashReceived)).toLocaleString('uz-UZ')} so'm
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
 

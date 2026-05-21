@@ -1,4 +1,4 @@
-import { Product, Category, StoreSettings, Debt, Sale } from './types';
+import { Product, Category, StoreSettings, Debt, Sale, Cashier } from './types';
 
 export const INITIAL_CATEGORIES: Category[] = [
   { id: 'all', name: 'Barchasi', icon: 'LayoutGrid' },
@@ -21,6 +21,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     icon: 'CupSoda',
     barcode: '123456789012',
     lowStockThreshold: 5,
+    isFeatured: true,
+    featuredOrder: 1,
+    soldCount: 100,
+    discount: 0,
   },
   {
     id: 'prod-2',
@@ -33,6 +37,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     icon: 'Milk',
     barcode: '112233445561',
     lowStockThreshold: 5,
+    isFeatured: true,
+    featuredOrder: 2,
+    soldCount: 80,
+    discount: 0,
   },
   {
     id: 'prod-3',
@@ -45,6 +53,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     icon: 'Package',
     barcode: '112233445562',
     lowStockThreshold: 10,
+    isFeatured: true,
+    featuredOrder: 3,
+    soldCount: 60,
+    discount: 0,
   },
   {
     id: 'prod-4',
@@ -169,6 +181,12 @@ export const INITIAL_SALES: Sale[] = [
     customerName: 'Oddiy mijoz',
     totalAmount: 1250000,
   }
+];
+
+export const INITIAL_CASHIERS: Cashier[] = [
+  { id: 'cashier-0', name: 'Egasi',      pin: '0000', storeLabel: 'Bosh ofis',   role: 'owner',   isActive: true },
+  { id: 'cashier-1', name: 'Asadbek O.', pin: '1111', storeLabel: "1-Do'kon",    role: 'cashier', isActive: true },
+  { id: 'cashier-2', name: 'Malika X.',  pin: '2222', storeLabel: "2-Do'kon",    role: 'cashier', isActive: true },
 ];
 
 export const INITIAL_SETTINGS: StoreSettings = {
