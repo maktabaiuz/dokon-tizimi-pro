@@ -1,0 +1,181 @@
+import { Product, Category, StoreSettings, Debt, Sale } from './types';
+
+export const INITIAL_CATEGORIES: Category[] = [
+  { id: 'all', name: 'Barchasi', icon: 'LayoutGrid' },
+  { id: 'drinks', name: 'Ichimliklar', icon: 'CupSoda' },
+  { id: 'food', name: 'Oziq-ovqat', icon: 'Apple' },
+  { id: 'fruits', name: 'Mevalar', icon: 'Grape' },
+  { id: 'stationery', name: 'Kantselyariya', icon: 'PenTool' },
+  { id: 'cleaning', name: 'Tozalash vositalari', icon: 'Sparkles' },
+];
+
+export const INITIAL_PRODUCTS: Product[] = [
+  {
+    id: 'prod-1',
+    name: 'Coca-Cola 0.5L',
+    category: 'drinks',
+    costPrice: 6000,
+    price: 8000,
+    stock: 3,
+    image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&q=80&w=600',
+    icon: 'CupSoda',
+    barcode: '123456789012',
+    lowStockThreshold: 5,
+  },
+  {
+    id: 'prod-2',
+    name: 'Sut Siyamo 1L',
+    category: 'drinks',
+    costPrice: 10000,
+    price: 12500,
+    stock: 22,
+    image: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&q=80&w=600',
+    icon: 'Milk',
+    barcode: '112233445561',
+    lowStockThreshold: 5,
+  },
+  {
+    id: 'prod-3',
+    name: 'Lays Chips 80g',
+    category: 'food',
+    costPrice: 11500,
+    price: 15000,
+    stock: 8,
+    image: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&q=80&w=600',
+    icon: 'Package',
+    barcode: '112233445562',
+    lowStockThreshold: 10,
+  },
+  {
+    id: 'prod-4',
+    name: 'Non (Buxoro)',
+    category: 'food',
+    costPrice: 2800,
+    price: 4000,
+    stock: 2,
+    icon: 'Croissant',
+    barcode: '112233445563',
+    lowStockThreshold: 5,
+  },
+  {
+    id: 'prod-5',
+    name: "Yog' Siyamo 1L",
+    category: 'food',
+    costPrice: 14000,
+    price: 18500,
+    stock: 5,
+    icon: 'Container',
+    barcode: '112233445564',
+    lowStockThreshold: 6,
+  },
+  {
+    id: 'prod-6',
+    name: 'Choy Greenfield',
+    category: 'drinks',
+    costPrice: 17500,
+    price: 22000,
+    stock: 15,
+    icon: 'Coffee',
+    barcode: '112233445565',
+    lowStockThreshold: 5,
+  },
+  {
+    id: 'prod-7',
+    name: 'Nike Air Max 270 (Oq)',
+    category: 'stationery', // fallback category for general boutique item or sports category
+    costPrice: 950000,
+    price: 1250000,
+    stock: 48,
+    image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&q=80&w=600',
+    icon: 'ShoppingBag',
+    barcode: '543210987654',
+    lowStockThreshold: 5,
+  },
+  {
+    id: 'prod-8',
+    name: 'iPhone 14 Pro Max 256GB',
+    category: 'stationery',
+    costPrice: 12800000,
+    price: 14500000,
+    stock: 4,
+    image: 'https://images.unsplash.com/photo-1678652197831-2d180705cd2c?auto=format&fit=crop&q=80&w=600',
+    icon: 'Smartphone',
+    barcode: '887766554433',
+    lowStockThreshold: 2,
+  },
+  {
+    id: 'prod-9',
+    name: 'Samsung Neo QLED 65"',
+    category: 'stationery',
+    costPrice: 18500000,
+    price: 22000000,
+    stock: 3,
+    icon: 'Tv',
+    barcode: '998877665544',
+  },
+  {
+    id: 'prod-10',
+    name: 'MacBook Pro M2 14"',
+    category: 'stationery',
+    costPrice: 17200000,
+    price: 19800000,
+    stock: 6,
+    icon: 'Laptop',
+    barcode: '112233445566',
+  }
+];
+
+export const INITIAL_DEBTS: Debt[] = [
+  { id: 'debt-1', customerName: 'Rustam aka', details: '4-uy', amount: 145000, date: '2026-05-18', phone: '+998901234567', paidAmount: 0 },
+  { id: 'debt-2', customerName: 'Jasur', details: 'Haydovchi', amount: 82000, date: '2026-05-19', phone: '+998907654321', paidAmount: 0 },
+  { id: 'debt-3', customerName: 'Dilshod', details: "Do'konchi", amount: 210000, date: '2026-05-19', phone: '+998991112233', paidAmount: 0 },
+  { id: 'debt-4', customerName: 'Malika opa', details: 'Qo\'shni', amount: 45000, date: '2026-05-20', phone: '+998935556677', paidAmount: 0 },
+];
+
+export const INITIAL_SALES: Sale[] = [
+  {
+    id: 'TR-45920',
+    timestamp: '2026-05-20 14:22',
+    cashier: 'Asadbek O.',
+    items: [
+      { productId: 'prod-1', name: 'Coca-Cola 0.5L', quantity: 2, price: 8000 },
+      { productId: 'prod-2', name: 'Sut Siyamo 1L', quantity: 1, price: 12500 },
+      { productId: 'prod-3', name: 'Lays Chips 80g', quantity: 1, price: 15000 },
+    ],
+    paymentMethod: 'Naqd',
+    customerName: 'Oddiy mijoz',
+    totalAmount: 43500,
+  },
+  {
+    id: 'TR-45919',
+    timestamp: '2026-05-20 14:15',
+    cashier: 'Asadbek O.',
+    items: [
+      { productId: 'prod-6', name: 'Choy Greenfield', quantity: 2, price: 22000 },
+      { productId: 'prod-4', name: 'Non (Buxoro)', quantity: 1, price: 4000 },
+    ],
+    paymentMethod: 'Nasiya',
+    customerName: 'Rustam aka',
+    totalAmount: 48000,
+  },
+  {
+    id: 'TR-45918',
+    timestamp: '2026-05-20 13:58',
+    cashier: 'Asadbek O.',
+    items: [
+      { productId: 'prod-7', name: 'Nike Air Max 270 (Oq)', quantity: 1, price: 1250000 },
+    ],
+    paymentMethod: 'Karta',
+    customerName: 'Oddiy mijoz',
+    totalAmount: 1250000,
+  }
+];
+
+export const INITIAL_SETTINGS: StoreSettings = {
+  storeName: "G'alaba Supermarket",
+  address: "Toshkent sh., Yunusobod tumani, 4-kvartal",
+  phone: "+998 90 123 45 67",
+  inn: "302145698",
+  paperSize: '58mm',
+  operatorPin: '1234',
+};

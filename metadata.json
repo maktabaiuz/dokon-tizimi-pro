@@ -1,0 +1,6 @@
+{
+  "name": "Do'kon Tizimi PRO",
+  "description": "Professional do'kon kassa apparati, ombor hisobi va analitika tizimi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
