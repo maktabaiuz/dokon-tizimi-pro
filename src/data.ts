@@ -184,7 +184,7 @@ export const INITIAL_SALES: Sale[] = [
 ];
 
 export const INITIAL_CASHIERS: Cashier[] = [
-  { id: 'cashier-0', name: 'Egasi',      pin: '0000', storeLabel: 'Bosh ofis',   role: 'owner',   isActive: true },
+  { id: 'cashier-0', name: 'Admin',      pin: '0000', storeLabel: 'Bosh ofis',   role: 'owner',   isActive: true },
   { id: 'cashier-1', name: 'Asadbek O.', pin: '1111', storeLabel: "1-Do'kon",    role: 'cashier', isActive: true },
   { id: 'cashier-2', name: 'Malika X.',  pin: '2222', storeLabel: "2-Do'kon",    role: 'cashier', isActive: true },
 ];
