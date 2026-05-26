@@ -1,19 +1,21 @@
 import { Product, Category, StoreSettings, Debt, Sale, Cashier } from './types';
 
 export const INITIAL_CATEGORIES: Category[] = [
-  { id: 'all', name: 'Barchasi', icon: 'LayoutGrid' },
-  { id: 'drinks', name: 'Ichimliklar', icon: 'CupSoda' },
-  { id: 'food', name: 'Oziq-ovqat', icon: 'Apple' },
-  { id: 'fruits', name: 'Mevalar', icon: 'Grape' },
-  { id: 'stationery', name: 'Kantselyariya', icon: 'PenTool' },
-  { id: 'cleaning', name: 'Tozalash vositalari', icon: 'Sparkles' },
+  { id: 'all',       name: 'Barchasi',                icon: 'LayoutGrid' },
+  { id: 'food',      name: 'Oziq-ovqat',              icon: 'Apple' },
+  { id: 'furniture', name: 'Uy jihozlari',            icon: 'Sofa' },
+  { id: 'dishes',    name: 'Idish-tovoqlar',          icon: 'UtensilsCrossed' },
+  { id: 'cleaning',  name: 'Uy tozalashga buyimlar',  icon: 'Sparkles' },
+  { id: 'water',     name: 'Suv',                     icon: 'Droplets' },
+  { id: 'cosmetics', name: 'Kosmetika',               icon: 'Smile' },
+  { id: 'perfume',   name: 'Parfyumeriya',            icon: 'Wind' },
 ];
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'prod-1',
     name: 'Coca-Cola 0.5L',
-    category: 'drinks',
+    category: 'water',
     costPrice: 6000,
     price: 8000,
     stock: 3,
@@ -29,7 +31,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'prod-2',
     name: 'Sut Siyamo 1L',
-    category: 'drinks',
+    category: 'water',
     costPrice: 10000,
     price: 12500,
     stock: 22,
@@ -83,7 +85,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'prod-6',
     name: 'Choy Greenfield',
-    category: 'drinks',
+    category: 'water',
     costPrice: 17500,
     price: 22000,
     stock: 15,
@@ -94,7 +96,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'prod-7',
     name: 'Nike Air Max 270 (Oq)',
-    category: 'stationery', // fallback category for general boutique item or sports category
+    category: 'furniture',
     costPrice: 950000,
     price: 1250000,
     stock: 48,
@@ -106,7 +108,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'prod-8',
     name: 'iPhone 14 Pro Max 256GB',
-    category: 'stationery',
+    category: 'furniture',
     costPrice: 12800000,
     price: 14500000,
     stock: 4,
@@ -118,7 +120,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'prod-9',
     name: 'Samsung Neo QLED 65"',
-    category: 'stationery',
+    category: 'furniture',
     costPrice: 18500000,
     price: 22000000,
     stock: 3,
@@ -128,7 +130,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'prod-10',
     name: 'MacBook Pro M2 14"',
-    category: 'stationery',
+    category: 'furniture',
     costPrice: 17200000,
     price: 19800000,
     stock: 6,

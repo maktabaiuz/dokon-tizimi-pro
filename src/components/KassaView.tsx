@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import BarcodeScanner from './BarcodeScanner';
 import {
   Search,
   ShoppingCart,
@@ -16,9 +17,10 @@ import {
   PackageCheck,
   PackageX,
   Package,
-  QrCode
+  QrCode,
+  Camera
 } from 'lucide-react';
-import { Product, Category, CartItem } from '../types';
+import { Product, Category, CartItem, StoreSettings } from '../types';
 import * as Icons from 'lucide-react';
 import QRPaymentModal from './QRPaymentModal';
 
@@ -33,6 +35,8 @@ interface KassaViewProps {
   onUpdateCartQuantity: (productId: string, delta: number) => void;
   onClearCart: () => void;
   onCheckout: (paymentMethod: 'Naqd' | 'Karta' | 'Nasiya', customerName: string, discountPercent: number, customerPhone: string) => void;
+  cashierName: string;
+  settings: StoreSettings;
 }
 
 const CART_TABS = [
@@ -52,9 +56,12 @@ export default function KassaView({
   onUpdateCartQuantity,
   onClearCart,
   onCheckout,
+  cashierName,
+  settings,
 }: KassaViewProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [showScanner, setShowScanner] = useState(false);
   const [promoCode, setPromoCode] = useState<string>('');
   const [appliedDiscount, setAppliedDiscount] = useState<number>(0);
   const [promoMessage, setPromoMessage] = useState<{ text: string; isError: boolean } | null>(null);
@@ -155,7 +162,7 @@ export default function KassaView({
     const receipt = {
       id: `TR-${Math.floor(10000 + Math.random() * 90000)}`,
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      cashier: 'Asadbek O.',
+      cashier: cashierName,
       items: cart.map(item => ({
         productId: item.product.id,
         name: item.product.name,
@@ -188,7 +195,7 @@ export default function KassaView({
     const receipt = {
       id: `TR-${Math.floor(10000 + Math.random() * 90000)}`,
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      cashier: 'Asadbek O.',
+      cashier: cashierName,
       items: cart.map(item => ({
         productId: item.product.id,
         name: item.product.name,
@@ -227,7 +234,19 @@ export default function KassaView({
 
   return (
     <div className="flex-1 flex flex-col min-h-0 relative select-none bg-[#F9F9FF]">
-      
+      {showScanner && (
+        <BarcodeScanner
+          onScan={(barcode) => {
+            const found = products.find(p => p.barcode === barcode);
+            if (found && found.stock > 0) {
+              onAddToCart(found);
+            }
+            setShowScanner(false);
+          }}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
+
       {/* Ticker / Warning Ribbon for Low Stock Items */}
       <div className="w-full bg-[#f9e9e9] border-b border-[#ffd2d2] text-[#93000a] py-1 px-4 overflow-hidden relative h-7">
         <div className="inline-block whitespace-nowrap min-w-full absolute flex items-center gap-1 marquee-animation font-medium text-xs font-sans tracking-wide">
@@ -254,6 +273,7 @@ export default function KassaView({
               <Scan className="text-[#64748B] w-5 h-5 mr-3" />
               <input
                 type="text"
+                autoFocus
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleSearchKeyPress}
@@ -269,6 +289,18 @@ export default function KassaView({
                 </button>
               )}
             </div>
+            <button
+              onClick={() => setShowScanner(true)}
+              style={{
+                padding: '10px 14px',
+                background: '#2563EB',
+                border: 'none',
+                borderRadius: '12px',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+              <Camera style={{ width: '20px', height: '20px', strokeWidth: 1.5, color: 'white' }} />
+            </button>
             <button
               onClick={() => {
                 const e = { key: 'Enter' } as React.KeyboardEvent<HTMLInputElement>;
@@ -324,8 +356,10 @@ export default function KassaView({
                       borderRadius:'16px', overflow:'hidden',
                       position:'relative', cursor:'pointer',
                       flexShrink:0, border:'1px solid #E2E8F0'}}>
-                    <img src={product.image} alt={product.name}
-                      style={{width:'100%', height:'100%', objectFit:'cover'}}/>
+                    {product.image
+                      ? <img src={product.image} alt={product.name} style={{width:'100%', height:'100%', objectFit:'cover'}}/>
+                      : <div style={{width:'100%', height:'100%', background:'linear-gradient(135deg,#2563eb,#7c3aed)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'40px'}}>{product.icon || '📦'}</div>
+                    }
                     <div style={{position:'absolute', bottom:0,
                       left:0, right:0, padding:'12px',
                       background:'linear-gradient(transparent, rgba(0,0,0,0.8))',
@@ -819,9 +853,9 @@ export default function KassaView({
                   <div className="border border-slate-300 p-5 rounded-lg font-mono text-xs text-slate-800 bg-[#FCFDFE] shadow-inner space-y-4 leading-relaxed tracking-tight max-w-[340px] mx-auto overflow-hidden">
                     
                     <div className="text-center space-y-1 pb-3 border-b border-dashed border-slate-300">
-                      <p className="font-extrabold text-sm text-[#1E293B]">G&apos;alaba Supermarket</p>
-                      <p className="text-[10px] text-slate-500">Toshkent sh., Yunusobod tumani</p>
-                      <p className="text-[10px] text-slate-500">Tel: +998 90 123 45 67</p>
+                      <p className="font-extrabold text-sm text-[#1E293B]">{settings.storeName}</p>
+                      <p className="text-[10px] text-slate-500">{settings.address}</p>
+                      <p className="text-[10px] text-slate-500">Tel: {settings.phone}</p>
                       <p className="text-[9px] text-slate-400">Sana: {lastCompletedReceipt?.timestamp}</p>
                       <p className="text-[9px] text-slate-400">Kassir: {lastCompletedReceipt?.cashier}</p>
                     </div>
@@ -929,7 +963,7 @@ export default function KassaView({
       <QRPaymentModal
         isOpen={showQR}
         amount={totalAmount}
-        storeName="G'alaba Supermarket"
+        storeName={settings.storeName}
         onClose={() => setShowQR(false)}
         onConfirm={handleQRConfirm}
       />

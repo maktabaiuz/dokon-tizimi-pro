@@ -1,4 +1,41 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+
+const FEATURE_FLAGS = {
+  enableDiscount: false,
+};
+
+// ── EAN-13 barcode canvas renderer ───────────────────────────────────────────
+const L_CODES = ['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];
+const G_CODES = ['0100111','0110011','0011011','0100001','0011101','0111001','0000101','0010001','0001001','0010111'];
+const R_CODES = ['1110010','1100110','1101100','1000010','1011100','1001110','1010000','1000100','1001000','1110100'];
+const PARITY  = ['AAAAAA','AABABB','AABBAB','AABBBA','ABAABB','ABBAAB','ABBBAA','ABABAB','ABABBA','ABBABA'];
+
+function drawEAN13(canvas: HTMLCanvasElement, raw: string) {
+  const digits = raw.replace(/\D/g, '').padEnd(13, '0').slice(0, 13).split('').map(Number);
+  const parity = PARITY[digits[0]];
+  let bits = '101';
+  for (let i = 0; i < 6; i++) bits += parity[i] === 'A' ? L_CODES[digits[i + 1]] : G_CODES[digits[i + 1]];
+  bits += '01010';
+  for (let i = 0; i < 6; i++) bits += R_CODES[digits[i + 7]];
+  bits += '101';
+
+  const bw = 2, bh = 56, pad = 14;
+  canvas.width  = bits.length * bw + pad * 2;
+  canvas.height = bh + 22;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#1E293B';
+  for (let i = 0; i < bits.length; i++) {
+    if (bits[i] === '1') ctx.fillRect(pad + i * bw, 4, bw, bh);
+  }
+  ctx.font = 'bold 9px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(digits[0].toString(), 2, bh + 16);
+  ctx.textAlign = 'center';
+  ctx.fillText(digits.slice(1, 7).join(''), pad + 21 * bw, bh + 16);
+  ctx.fillText(digits.slice(7).join(''),   pad + (21 + 5 + 21) * bw / 2 + 21 * bw, bh + 16);
+}
 import { 
   Plus, 
   Search, 
@@ -20,11 +57,13 @@ import {
   Info,
   X,
   PlusSquare,
-  FileJson
+  FileJson,
+  Camera
 } from 'lucide-react';
-import { Product, Category, StoreSettings, Cashier } from '../types';
+import { Product, Category, StoreSettings, Cashier, Store as StoreData } from '../types';
 import { exportAllData, importAllData } from '../utils/storage';
 import * as Icons from 'lucide-react';
+import BarcodeScanner from './BarcodeScanner';
 
 interface AdminViewProps {
   products: Product[];
@@ -35,7 +74,10 @@ interface AdminViewProps {
   onUpdateProduct: (product: Product) => void;
   onDeleteProduct: (productId: string) => void;
   onUpdateSettings: (settings: StoreSettings) => void;
+  activeStore: StoreData;
+  onUpdateStore: (store: StoreData) => void;
   onAddCategory: (category: Omit<Category, 'id'>) => void;
+  onDeleteCategory: (id: string) => void;
   onAddCashier: (cashier: Omit<Cashier, 'id'>) => void;
   onUpdateCashier: (cashier: Cashier) => void;
   onDeleteCashier: (id: string) => void;
@@ -46,16 +88,19 @@ export default function AdminView({
   categories,
   settings,
   cashiers,
+  activeStore,
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
   onUpdateSettings,
+  onUpdateStore,
   onAddCategory,
+  onDeleteCategory,
   onAddCashier,
   onUpdateCashier,
   onDeleteCashier,
 }: AdminViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'inventory' | 'kirim' | 'categories' | 'settings' | 'cashiers' | 'vitrina'>('inventory');
+  const [activeSubTab, setActiveSubTab] = useState<'inventory' | 'categories' | 'settings' | 'cashiers' | 'vitrina'>('inventory');
 
   // Kasir modal states
   const [isCashierModalOpen, setIsCashierModalOpen] = useState(false);
@@ -64,111 +109,13 @@ export default function AdminView({
     name: '', pin: '', storeLabel: '', role: 'cashier', isActive: true,
   });
   
-  // Kirim (stock arrival) states
-  const [kirimProdId, setKirimProdId] = useState<string>('');
-  const [kirimQty, setKirimQty] = useState<number>(10);
-  const [kirimCost, setKirimCost] = useState<number>(0);
-  const [kirimPrice, setKirimPrice] = useState<number>(0);
-  const [kirimSuccess, setKirimSuccess] = useState<string | null>(null);
-
-  interface ReceptionLog {
-    id: string;
-    timestamp: string;
-    productName: string;
-    barcode: string;
-    quantity: number;
-    costPrice: number;
-    price: number;
-    totalCost: number;
-  }
-
-  const [receptionsHistory, setReceptionsHistory] = useState<ReceptionLog[]>([
-    {
-      id: 'REC-101',
-      timestamp: '2026-05-18 10:30',
-      productName: 'Coca-Cola 0.5L',
-      barcode: '123456789012',
-      quantity: 50,
-      costPrice: 6000,
-      price: 8000,
-      totalCost: 300000,
-    },
-    {
-      id: 'REC-102',
-      timestamp: '2026-05-19 15:45',
-      productName: 'Sut Siyamo 1L',
-      barcode: '112233445561',
-      quantity: 30,
-      costPrice: 10000,
-      price: 12500,
-      totalCost: 300000,
-    },
-    {
-      id: 'REC-103',
-      timestamp: '2026-05-20 09:15',
-      productName: 'Lays Chips 80g',
-      barcode: '112233445562',
-      quantity: 40,
-      costPrice: 11500,
-      price: 15000,
-      totalCost: 460000,
-    }
-  ]);
-
-  const selectKirimProduct = (id: string) => {
-    setKirimProdId(id);
-    const prod = products.find(p => p.id === id);
-    if (prod) {
-      setKirimQty(10);
-      setKirimCost(prod.costPrice);
-      setKirimPrice(prod.price);
-    } else {
-      setKirimQty(10);
-      setKirimCost(0);
-      setKirimPrice(0);
-    }
-  };
-
-  const handleKirimSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const prod = products.find(p => p.id === kirimProdId);
-    if (!prod) {
-      alert("Iltimos, avval mahsulotni tanlang!");
-      return;
-    }
-    if (kirimQty <= 0) {
-      alert("Kirim qilinayotgan miqdor kamida 1 ta bo'lishi shart!");
-      return;
-    }
-
-    onUpdateProduct({
-      ...prod,
-      stock: prod.stock + kirimQty,
-      costPrice: kirimCost,
-      price: kirimPrice,
-    });
-
-    const newLog: ReceptionLog = {
-      id: `REC-${Math.floor(104 + Math.random() * 890)}`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      productName: prod.name,
-      barcode: prod.barcode,
-      quantity: kirimQty,
-      costPrice: kirimCost,
-      price: kirimPrice,
-      totalCost: kirimQty * kirimCost,
-    };
-
-    setReceptionsHistory(prev => [newLog, ...prev]);
-    setKirimSuccess(`Muvaffaqiyatli qabul qilindi! "${prod.name}" ombor zaxirasiga +${kirimQty} ta qo'shildi.`);
-    setKirimProdId('');
-    setTimeout(() => setKirimSuccess(null), 5000);
-  };
   const [searchQuery, setSearchQuery] = useState<string>('');
   
   // Product dialog states
   const [isProductModalOpen, setIsProductModalOpen] = useState<boolean>(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [showScanner, setShowScanner] = useState(false);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -187,8 +134,7 @@ export default function AdminView({
   const [settingsForm, setSettingsForm] = useState<StoreSettings>({ ...settings });
   const [pinChangeMessage, setPinChangeMessage] = useState<string | null>(null);
 
-  // Category modal states
-  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState<boolean>(false);
+  // Category inline form states
   const [newCatName, setNewCatName] = useState<string>('');
   const [newCatIcon, setNewCatIcon] = useState<string>('Package');
 
@@ -229,6 +175,13 @@ export default function AdminView({
     reader.readAsText(file);
     e.target.value = '';
   };
+
+  const barcodeCanvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (isProductModalOpen && barcodeCanvasRef.current && formData.barcode.length >= 8) {
+      drawEAN13(barcodeCanvasRef.current, formData.barcode);
+    }
+  }, [formData.barcode, isProductModalOpen]);
 
   // CSV import
   const csvFileInputRef = useRef<HTMLInputElement>(null);
@@ -292,14 +245,27 @@ export default function AdminView({
     return <LucideIcon className={className} />;
   };
 
-  // Calculations for Bento statistics
+  // KPI calculations
   const totalStockValue = products.reduce((acc, p) => acc + (p.price * p.stock), 0);
-  const lowStockTypesCount = products.filter(p => p.stock <= (p.lowStockThreshold || 5)).length;
-  const totalInventoryTurnover = Math.round(totalStockValue * 0.28); // 28% estimated monthly turnover
+  const totalInventoryTurnover = products.reduce((acc, p) => acc + ((p.soldCount || 0) * p.price), 0);
+  const lowStockItems = products.filter(p => p.stock <= (p.lowStockThreshold || 5));
+  const lowStockTypesCount = lowStockItems.length;
+
+  // Carousel state for low-stock items
+  const [carouselIdx, setCarouselIdx] = useState(0);
+  useEffect(() => {
+    if (lowStockItems.length <= 6) return;
+    const id = setInterval(() => setCarouselIdx(i => (i + 1) % lowStockItems.length), 3000);
+    return () => clearInterval(id);
+  }, [lowStockItems.length]);
+
+  const generateBarcode = () =>
+    '200' + Math.floor(1000000000 + Math.random() * 9000000000).toString();
 
   // Handle product edit click
   const handleOpenEdit = (p: Product) => {
     setEditingProduct(p);
+    setFormErrors({});
     setFormData({
       name: p.name,
       category: p.category,
@@ -316,13 +282,14 @@ export default function AdminView({
 
   const handleOpenAdd = () => {
     setEditingProduct(null);
+    setFormErrors({});
     setFormData({
       name: '',
       category: categories[1]?.id || 'food',
       costPrice: 0,
       price: 0,
       stock: 0,
-      barcode: Math.floor(100000000000 + Math.random() * 900000000000).toString(),
+      barcode: generateBarcode(),
       lowStockThreshold: 5,
       icon: 'Package',
       image: '',
@@ -330,13 +297,25 @@ export default function AdminView({
     setIsProductModalOpen(true);
   };
 
+  const validateProductForm = () => {
+    const errs: Record<string, string> = {};
+    if (formData.name.trim().length < 3) errs.name = "Nomi kamida 3 ta harf bo'lishi kerak";
+    if (formData.name.trim().length > 255) errs.name = "Nomi 255 ta harfdan oshmasin";
+    if (formData.costPrice < 0) errs.costPrice = "Manfiy bo'lmasin";
+    if (formData.price < 0) errs.price = "Manfiy bo'lmasin";
+    if (formData.price > 0 && formData.costPrice > 0 && formData.price <= formData.costPrice)
+      errs.price = "Sotish narxi tan narxidan katta bo'lishi kerak";
+    if (formData.stock < 0) errs.stock = "Manfiy bo'lmasin";
+    if (!formData.barcode.trim()) errs.barcode = "Barcode kiritilishi shart";
+    return errs;
+  };
+
   const handleProductSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const errs = validateProductForm();
+    if (Object.keys(errs).length > 0) { setFormErrors(errs); return; }
     if (editingProduct) {
-      onUpdateProduct({
-        ...editingProduct,
-        ...formData,
-      });
+      onUpdateProduct({ ...editingProduct, ...formData });
     } else {
       onAddProduct(formData);
     }
@@ -346,6 +325,7 @@ export default function AdminView({
   const handleSettingsSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onUpdateSettings(settingsForm);
+    onUpdateStore({ ...activeStore, name: settingsForm.storeName, address: settingsForm.address, phone: settingsForm.phone });
     setPinChangeMessage('Sozlamalar zudlik bilan saqlandi!');
     setTimeout(() => setPinChangeMessage(null), 3000);
   };
@@ -353,13 +333,9 @@ export default function AdminView({
   const handleCategorySubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatName.trim()) return;
-    onAddCategory({
-      name: newCatName.trim(),
-      icon: newCatIcon,
-    });
+    onAddCategory({ name: newCatName.trim(), icon: newCatIcon });
     setNewCatName('');
     setNewCatIcon('Package');
-    setIsCategoryModalOpen(false);
   };
 
   const filteredProducts = products.filter(p => 
@@ -388,18 +364,6 @@ export default function AdminView({
           >
             {renderIcon('Box', 'w-4 h-4')}
             Mahsulotlar
-          </button>
-          
-          <button
-            onClick={() => setActiveSubTab('kirim')}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold whitespace-nowrap justify-start w-full transition-all cursor-pointer ${
-              activeSubTab === 'kirim'
-                ? 'bg-[#2563eb] text-white shadow-md'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            {renderIcon('PlusSquare', 'w-4 h-4')}
-            Tovar Kirimi (Qabul)
           </button>
           
           <button
@@ -480,34 +444,89 @@ export default function AdminView({
 
             {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Card 1: Umumiy qiymat */}
               <div className="bg-white p-5 rounded-2xl border border-[#c3c6d7] flex items-center gap-4 shadow-sm">
-                <div className="w-12 h-12 bg-[#eeefff] text-[#2563eb] rounded-full flex items-center justify-center">
+                <div className="w-12 h-12 bg-[#eeefff] text-[#2563eb] rounded-full flex items-center justify-center shrink-0">
                   {renderIcon('Coins', 'w-6 h-6')}
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Umumiy qiymat</p>
-                  <p className="text-xl font-black text-[#1E293B] mt-0.5">{totalStockValue.toLocaleString()} UZS</p>
+                  <p className="text-xl font-black text-[#1E293B] mt-0.5 truncate">
+                    {new Intl.NumberFormat('uz-UZ').format(totalStockValue)} UZS
+                  </p>
                 </div>
               </div>
 
+              {/* Card 2: Oylik aylanma (real soldCount × price) */}
               <div className="bg-white p-5 rounded-2xl border border-[#c3c6d7] flex items-center gap-4 shadow-sm">
-                <div className="w-12 h-12 bg-green-50 text-green-600 rounded-full flex items-center justify-center">
+                <div className="w-12 h-12 bg-green-50 text-green-600 rounded-full flex items-center justify-center shrink-0">
                   {renderIcon('TrendingUp', 'w-6 h-6')}
                 </div>
-                <div>
-                  <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Oylik aylanma (Taxmin)</p>
-                  <p className="text-xl font-black text-[#1E293B] mt-0.5">{totalInventoryTurnover.toLocaleString()} UZS</p>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Oylik aylanma</p>
+                  <p className="text-xl font-black text-[#1E293B] mt-0.5 truncate">
+                    {new Intl.NumberFormat('uz-UZ').format(totalInventoryTurnover)} UZS
+                  </p>
                 </div>
               </div>
 
-              <div className="bg-white p-5 rounded-2xl border border-[#c3c6d7] flex items-center gap-4 shadow-sm">
-                <div className="w-12 h-12 bg-red-50 text-red-600 rounded-full flex items-center justify-center">
-                  {renderIcon('AlertTriangle', 'w-6 h-6')}
+              {/* Card 3: Kam qolganlar — list or carousel */}
+              <div className="bg-white p-5 rounded-2xl border border-[#c3c6d7] shadow-sm">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-12 h-12 bg-red-50 text-red-600 rounded-full flex items-center justify-center shrink-0">
+                    {renderIcon('AlertTriangle', 'w-6 h-6')}
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Kam qolganlar</p>
+                    <p className="text-xl font-black text-red-600">{lowStockTypesCount} turdagi</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Kam qolganlar</p>
-                  <p className="text-xl font-black text-red-600 mt-0.5">{lowStockTypesCount} turdagi</p>
-                </div>
+                {lowStockTypesCount === 0 ? (
+                  <p className="text-xs text-green-600 font-semibold">Barcha mahsulotlar yetarli ✓</p>
+                ) : lowStockItems.length <= 6 ? (
+                  <div className="space-y-1.5">
+                    {lowStockItems.map(p => (
+                      <div key={p.id} className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-[#1E293B] font-semibold truncate">{p.name}</span>
+                        <span style={{
+                          background: p.stock === 0 ? '#FEE2E2' : '#FEF3C7',
+                          color: p.stock === 0 ? '#B91C1C' : '#92400E',
+                          fontSize: '10px', fontWeight: 700,
+                          padding: '2px 8px', borderRadius: '999px', whiteSpace: 'nowrap',
+                        }}>
+                          {p.stock === 0 ? 'Tugagan' : `${p.stock} dona`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ overflow: 'hidden', height: '20px', position: 'relative' }}>
+                    {lowStockItems.map((p, i) => (
+                      <div key={p.id} style={{
+                        position: 'absolute', width: '100%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+                        transition: 'opacity 0.4s, transform 0.4s',
+                        opacity: i === carouselIdx ? 1 : 0,
+                        transform: i === carouselIdx ? 'translateY(0)' : 'translateY(8px)',
+                      }}>
+                        <span style={{ fontSize: '11px', color: '#1E293B', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {p.name}
+                        </span>
+                        <span style={{
+                          background: p.stock === 0 ? '#FEE2E2' : '#FEF3C7',
+                          color: p.stock === 0 ? '#B91C1C' : '#92400E',
+                          fontSize: '10px', fontWeight: 700,
+                          padding: '2px 8px', borderRadius: '999px', whiteSpace: 'nowrap',
+                        }}>
+                          {p.stock === 0 ? 'Tugagan' : `${p.stock} dona`}
+                        </span>
+                      </div>
+                    ))}
+                    <p style={{ position: 'absolute', bottom: '-16px', right: 0, fontSize: '9px', color: '#94A3B8' }}>
+                      {carouselIdx + 1}/{lowStockItems.length}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -524,32 +543,6 @@ export default function AdminView({
                     className="w-full pl-10 pr-4 py-2 bg-white border border-[#CBD5E1] rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#2563eb]/20"
                   />
                 </div>
-                <div className="flex flex-wrap gap-2 w-full sm:w-auto shrink-0 justify-end items-center">
-                  {csvImportMessage && (
-                    <span className="px-3 py-1.5 bg-green-50 border border-green-200 text-green-700 text-[10px] font-bold rounded-lg">
-                      {csvImportMessage}
-                    </span>
-                  )}
-                  <input
-                    ref={csvFileInputRef}
-                    type="file"
-                    accept=".csv"
-                    className="hidden"
-                    onChange={handleCsvImport}
-                  />
-                  <button
-                    onClick={handleDownloadSampleCsv}
-                    className="p-2.5 border border-[#c3c6d7] rounded-xl bg-white hover:bg-slate-50 text-slate-500 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5" /> Namuna CSV
-                  </button>
-                  <button
-                    onClick={() => csvFileInputRef.current?.click()}
-                    className="p-2.5 border border-green-300 rounded-xl bg-green-50 hover:bg-green-100 text-green-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <UploadCloud className="w-3.5 h-3.5" /> CSV dan yuklash
-                  </button>
-                </div>
               </div>
 
               {/* Printable or structured tabular grid */}
@@ -565,7 +558,9 @@ export default function AdminView({
                       <th className="px-5 py-3 text-center">Min. zaxira</th>
                       <th className="px-5 py-3 text-center">Ustama (Foyda)</th>
                       <th className="px-5 py-3 text-center">⭐ Vitrina</th>
-                      <th className="px-5 py-3 text-center">Aksiya %</th>
+                      {FEATURE_FLAGS.enableDiscount && (
+                        <th className="px-5 py-3 text-center">Aksiya %</th>
+                      )}
                       <th className="px-5 py-3 text-center">Sotilgan</th>
                       <th className="px-5 py-3 text-right">Amallar</th>
                     </tr>
@@ -646,42 +641,45 @@ export default function AdminView({
                             </button>
                           </td>
 
-                          {/* Aksiya % */}
-                          <td className="px-5 py-4 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <input
-                                type="number"
-                                min="0"
-                                max="99"
-                                value={product.discount || 0}
-                                onChange={e => {
-                                  const val = Math.min(99, Math.max(0, parseInt(e.target.value) || 0));
-                                  onUpdateProduct({ ...product, discount: val });
-                                }}
-                                className="w-12 text-center text-xs font-bold border border-slate-200 rounded-lg py-1 focus:outline-none focus:border-[#2563eb] bg-white"
-                              />
-                              <span className="text-[10px] text-slate-400">%</span>
-                            </div>
-                          </td>
+                          {/* Aksiya % — feature flag orqali boshqariladi */}
+                          {FEATURE_FLAGS.enableDiscount && (
+                            <td className="px-5 py-4 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="99"
+                                  value={product.discount || 0}
+                                  onChange={e => {
+                                    const val = Math.min(99, Math.max(0, parseInt(e.target.value) || 0));
+                                    onUpdateProduct({ ...product, discount: val });
+                                  }}
+                                  className="w-12 text-center text-xs font-bold border border-slate-200 rounded-lg py-1 focus:outline-none focus:border-[#2563eb] bg-white"
+                                />
+                                <span className="text-[10px] text-slate-400">%</span>
+                              </div>
+                            </td>
+                          )}
 
                           {/* Sotilgan */}
                           <td className="px-5 py-4 text-center">
-                            <span className={`text-xs font-bold ${(product.soldCount || 0) > 0 ? 'text-orange-600' : 'text-slate-400'}`}>
-                              {(product.soldCount || 0) > 0 ? `🔥 ${product.soldCount}` : '—'} ta
-                            </span>
+                            {(product.soldCount || 0) > 0 ? (
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                background: '#FFF7ED', color: '#C2410C',
+                                fontSize: '11px', fontWeight: 700,
+                                padding: '3px 10px', borderRadius: '999px',
+                                border: '1px solid #FED7AA',
+                              }}>
+                                🔥 {product.soldCount} ta
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '11px', color: '#CBD5E1', fontWeight: 600 }}>— ta</span>
+                            )}
                           </td>
 
                           <td className="px-5 py-4 text-right">
                             <div className="flex justify-end gap-1.5">
-                              {/* Quick stock add (+1) */}
-                              <button
-                                onClick={() => onUpdateProduct({ ...product, stock: product.stock + 10 })}
-                                title="Zapasga +10 ta qo'shish"
-                                className="p-1.5 text-green-600 hover:bg-green-50 border border-transparent hover:border-green-200 rounded-lg cursor-pointer max-w-[40px]"
-                              >
-                                <PlusSquare className="w-4 h-4" />
-                              </button>
-                              
                               <button
                                 onClick={() => handleOpenEdit(product)}
                                 title="Tahrirlash"
@@ -713,274 +711,72 @@ export default function AdminView({
           </div>
         )}
 
-        {/* Tab 1.5: Tovar Kirimi (Qabul Qilish) */}
-        {activeSubTab === 'kirim' && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                <h1 className="text-2xl font-bold text-[#1E293B]">Tovar Kirimi (Qabul Qilish)</h1>
-                <p className="text-sm text-[#64748B]">Omborga yangi tovarlar olib kelganda ularni tizimga kiritish va ko&apos;paytirish bo&apos;limi</p>
-              </div>
-              <button
-                onClick={handleOpenAdd}
-                className="bg-[#2563eb] hover:bg-[#004ac6] active:scale-95 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-all shadow-md select-none"
-              >
-                <PlusSquare className="w-4 h-4" />
-                Yangi tovar yaratish (Katalogga)
-              </button>
-            </div>
-
-            {kirimSuccess && (
-              <div className="p-4 bg-green-50 border border-green-200 text-green-800 rounded-xl text-xs font-bold leading-5">
-                🚀 {kirimSuccess}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              
-              {/* Kirim Form Card */}
-              <form onSubmit={handleKirimSubmit} className="lg:col-span-5 bg-white p-6 rounded-2xl border border-[#c3c6d7] shadow-sm space-y-4">
-                <h3 className="text-sm font-bold text-[#004ac6] border-b border-dashed border-slate-200 pb-3 flex items-center gap-1.5">
-                  <PlusSquare className="w-4 h-4" />
-                  Kirim parametrlarini kiriting
-                </h3>
-
-                <div className="space-y-3">
-                  {/* Select Product */}
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#64748B] block">Qabul qilinayotgan tovar</label>
-                    <select
-                      value={kirimProdId}
-                      onChange={(e) => selectKirimProduct(e.target.value)}
-                      required
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-bold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs text-[#1E293B]"
-                    >
-                      <option value="">-- Tovarni tanlang --</option>
-                      {products.map(p => (
-                        <option key={p.id} value={p.id}>{p.name} ({p.barcode})</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {kirimProdId ? (
-                    (() => {
-                      const selectedProd = products.find(p => p.id === kirimProdId);
-                      if (!selectedProd) return null;
-                      
-                      const futureStock = selectedProd.stock + (kirimQty || 0);
-                      const totalInvestedSum = (kirimQty || 0) * (kirimCost || 0);
-                      const unitProfit = (kirimPrice || 0) - (kirimCost || 0);
-                      const percentProfit = kirimCost > 0 ? Math.round((unitProfit / kirimCost) * 100) : 0;
-
-                      return (
-                        <div className="space-y-4">
-                          
-                          {/* Selected product status review */}
-                          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs text-slate-700 font-semibold">
-                            <p className="font-bold text-[#1E293B] flex items-center gap-1.5">
-                              <Info className="w-3.5 h-3.5 text-[#2563eb]" /> Foydali ma&apos;lumotlar:
-                            </p>
-                            <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
-                              <p>Hozirgi qoldiq: <span className="text-slate-900 font-black">{selectedProd.stock} ta</span></p>
-                              <p>Tan narxi (eski): <span className="text-emerald-700 font-black">{selectedProd.costPrice.toLocaleString()} UZS</span></p>
-                              <p>Sotish narxi (eski): <span className="text-blue-700 font-black">{selectedProd.price.toLocaleString()} UZS</span></p>
-                            </div>
-                          </div>
-
-                          {/* Inputs */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                              <label className="text-xs font-bold text-[#64748B] block">Kelgan soni (Dona)</label>
-                              <input
-                                type="number"
-                                required
-                                min={1}
-                                value={kirimQty || ''}
-                                onChange={(e) => setKirimQty(Math.max(1, parseInt(e.target.value) || 0))}
-                                className="w-full px-3 py-2 bg-white border border-[#CBD5E1] rounded-xl font-bold font-mono focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs text-slate-800"
-                              />
-                            </div>
-
-                            <div className="space-y-1">
-                              <label className="text-xs font-bold text-[#64748B] block">Kelgandagi tan narxi</label>
-                              <input
-                                type="number"
-                                required
-                                min={0}
-                                value={kirimCost || ''}
-                                onChange={(e) => setKirimCost(Math.max(0, parseFloat(e.target.value) || 0))}
-                                className="w-full px-3 py-2 bg-white border border-[#CBD5E1] rounded-xl font-bold font-mono focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs text-green-700"
-                              />
-                            </div>
-                          </div>
-
-                          <div className="space-y-1">
-                            <label className="text-xs font-bold text-[#64748B] block">Sotuvdagi yangi kassa narxi</label>
-                            <input
-                              type="number"
-                              required
-                              min={0}
-                              value={kirimPrice || ''}
-                              onChange={(e) => setKirimPrice(Math.max(0, parseFloat(e.target.value) || 0))}
-                              className="w-full px-4 py-2 bg-white border border-[#CBD5E1] rounded-xl font-bold font-mono focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs text-blue-700"
-                            />
-                          </div>
-
-                          {/* Dynamic calculator report card */}
-                          <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-2">
-                            <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">Hisob-Kitob Rezyume</p>
-                            
-                            <div className="space-y-1 text-xs">
-                              <div className="flex justify-between font-semibold text-slate-600">
-                                <span>Kirim qilingach omborni holati:</span>
-                                <span className="text-[#1E293B] font-bold">{selectedProd.stock} + {kirimQty} = <span className="text-indigo-600 font-extrabold">{futureStock} ta</span></span>
-                              </div>
-                              <div className="flex justify-between font-semibold text-slate-600">
-                                <span>Ushbu partiya jami qiymati:</span>
-                                <span className="text-[#1E293B] font-bold"><span className="text-emerald-700 font-extrabold">{totalInvestedSum.toLocaleString()}</span> UZS</span>
-                              </div>
-                              <div className="flex justify-between font-semibold text-slate-600 border-t border-slate-200/50 pt-1 mt-1">
-                                <span>Ustama (Sof foyda dona uchun):</span>
-                                <span className="text-slate-900 font-bold">
-                                  {unitProfit >= 0 ? (
-                                    <span className="text-green-600 font-extrabold">+{unitProfit.toLocaleString()} UZS ({percentProfit}%)</span>
-                                  ) : (
-                                    <span className="text-red-500 font-extrabold">Zarar: {unitProfit.toLocaleString()} UZS</span>
-                                  )}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <button
-                            type="submit"
-                            className="w-full py-3 bg-[#16A34A] hover:bg-[#15803d] active:scale-95 text-white rounded-xl text-xs font-black select-none cursor-pointer transition-all shadow-md flex items-center justify-center gap-2"
-                          >
-                            <PlusSquare className="w-4 h-4" />
-                            Kirimni Tasdiqlash
-                          </button>
-
-                        </div>
-                      );
-                    })()
-                  ) : (
-                    <div className="p-6 border-2 border-dashed border-slate-200 rounded-xl text-center text-slate-400 py-12">
-                      <PlusCircle className="w-10 h-10 mx-auto text-slate-300 stroke-[1.2] mb-2" />
-                      <p className="text-xs font-semibold">Kirim qilish uchun avval yuqoridan tovarni tanlang</p>
-                      <p className="text-[10px] text-slate-400 mt-1 max-w-xs mx-auto">Tovar ro&apos;yxatda yo&apos;q bo&apos;lsa, katalogga yangi tovar yaratish tugmasini bosing.</p>
-                    </div>
-                  )}
-
-                </div>
-              </form>
-
-              {/* Kirimlar Tarixi Table Panel (ERP-style) */}
-              <div className="lg:col-span-7 space-y-4">
-                <div className="bg-white rounded-2xl border border-[#c3c6d7] shadow-sm overflow-hidden">
-                  <div className="p-4 border-b border-[#E2E8F0] bg-slate-50 flex items-center justify-between">
-                    <div>
-                      <h3 className="font-bold text-xs text-[#1E293B]">Oxirgi Qabul Qilingan Mahsulotlar (Kirimlar Tarixi)</h3>
-                      <p className="text-[10px] text-[#64748B] mt-0.5">Yaqinda kiritilgan partiyalar ro&apos;yxati va ularning tannarxi</p>
-                    </div>
-                    <span className="bg-[#dee8ff] text-[#2563eb] text-[10px] font-black px-2.5 py-1 rounded-full border border-[#dee8ff]">
-                      {receptionsHistory.length} marta kirim
-                    </span>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse select-text">
-                      <thead className="bg-[#dee8ff]/30 text-[10px] font-bold text-[#434655] border-b border-[#c3c6d7]">
-                        <tr>
-                          <th className="px-4 py-2.5">Sana / Batch ID</th>
-                          <th className="px-4 py-2.5">Tovar Nomi</th>
-                          <th className="px-4 py-2.5 text-center">Soni</th>
-                          <th className="px-4 py-2.5 text-right">Tan Narxi</th>
-                          <th className="px-4 py-2.5 text-right">Jami Qiymat</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-[11px] font-semibold text-slate-700">
-                        {receptionsHistory.map(log => (
-                          <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-4 py-4">
-                              <span className="font-mono text-[9px] text-[#94A3B8] block">{log.id}</span>
-                              <span className="text-[10px] text-slate-400 font-medium block">{log.timestamp}</span>
-                            </td>
-                            <td className="px-4 py-4 font-bold text-slate-950">
-                              {log.productName}
-                              <span className="text-[9px] text-slate-400 font-mono block">Shtrix: {log.barcode}</span>
-                            </td>
-                            <td className="px-4 py-4 text-center">
-                              <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded-lg text-[10px] font-black">
-                                +{log.quantity} ta
-                              </span>
-                            </td>
-                            <td className="px-4 py-4 text-right font-mono">
-                              {log.costPrice.toLocaleString()} UZS
-                            </td>
-                            <td className="px-4 py-4 text-right font-bold font-mono text-emerald-700">
-                              {log.totalCost.toLocaleString()} UZS
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        )}
-
         {/* Tab 2: Category Settings */}
         {activeSubTab === 'categories' && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center bg-transparent">
-              <div>
-                <h1 className="text-2xl font-bold text-[#1E293B]">Kategoriyalar boshqaruvi</h1>
-                <p className="text-sm text-[#64748B]">Tizimdagi tovarni saralash uchun kataloglar ro&apos;yxati</p>
-              </div>
-              <button
-                onClick={() => setIsCategoryModalOpen(true)}
-                className="bg-[#2563eb] hover:bg-[#004ac6] text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 cursor-pointer transition-all shadow-md select-none"
-              >
-                <Plus className="w-4 h-4" />
-                Yangi kategoriya
-              </button>
+            <div>
+              <h1 className="text-2xl font-bold text-[#1E293B]">Kategoriyalar boshqaruvi</h1>
+              <p className="text-sm text-[#64748B]">Tizimdagi tovarni saralash uchun kataloglar ro&apos;yxati</p>
             </div>
 
-            {/* Scrolling grid list */}
+            {/* Categories grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {categories.map((cat) => {
-                const countOfProds = products.filter(p => p.category === cat.id).length;
+              {categories.filter(c => c.id !== 'all').map((cat) => {
+                const prodCount = products.filter(p => p.category === cat.id).length;
                 return (
-                  <div 
-                    key={cat.id} 
-                    className="p-5 bg-white border border-[#c3c6d7] rounded-2xl flex items-center justify-between shadow-sm cursor-pointer hover:shadow hover:border-[#2563eb]/30 transition-all select-none"
+                  <div
+                    key={cat.id}
+                    className="p-5 bg-white border border-[#c3c6d7] rounded-2xl flex items-center justify-between shadow-sm hover:shadow hover:border-[#2563eb]/30 transition-all"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-[#eeefff] text-[#2563eb] rounded-full flex items-center justify-center">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 shrink-0 bg-[#eeefff] text-[#2563eb] rounded-full flex items-center justify-center">
                         {renderIcon(cat.icon, 'w-5 h-5')}
                       </div>
-                      <div>
-                        <p className="font-bold text-sm text-[#1E293B]">{cat.name}</p>
-                        <p className="text-xs text-[#64748B] mt-0.5">ID guruh: <span className="font-mono">{cat.id}</span></p>
+                      <div className="min-w-0">
+                        <p className="font-bold text-sm text-[#1E293B] truncate">{cat.name}</p>
+                        <p className="text-xs text-[#64748B] mt-0.5">{prodCount} ta mahsulot</p>
                       </div>
                     </div>
-                    <span className="bg-[#eeefff] text-[#2563eb] text-xs font-black px-3 py-1 rounded-full border border-[#dee8ff]">
-                      {countOfProds} turlar
-                    </span>
+                    <button
+                      onClick={() => {
+                        if (prodCount > 0) { alert(`Bu kategoriyada ${prodCount} ta mahsulot bor. Avval mahsulotlarni boshqa kategoriyaga o'tkazing.`); return; }
+                        if (confirm(`"${cat.name}" kategoriyasini o'chirasizmi?`)) onDeleteCategory(cat.id);
+                      }}
+                      className="ml-3 shrink-0 p-2 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                      title="O'chirish"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 );
               })}
             </div>
 
-            <div className="bg-[#f0f3ff] p-6 rounded-2xl border-2 border-dashed border-[#c3c6d7] flex flex-col items-center justify-center text-center max-w-xl mx-auto py-10">
-              <FolderOpen className="text-slate-400 w-12 h-12 mb-3 stroke-[1.5]" />
-              <p className="font-bold text-sm text-slate-700">Yangi toifalar va guruhlar kiritish</p>
-              <p className="text-xs text-slate-400 max-w-sm mt-1.5 leading-6">
-                Yangi guruhlar do&apos;kon kassa terminalidagi buyurtmalarni filtrlash guruhlarida avtomatik integrallashib boradi
-              </p>
+            {/* Inline add-category form */}
+            <div className="bg-white border border-[#c3c6d7] rounded-2xl p-5 shadow-sm">
+              <h3 className="text-sm font-bold text-[#1E293B] flex items-center gap-2 mb-4 pb-3 border-b border-dashed border-slate-200">
+                <Plus className="w-4 h-4 text-[#2563eb]" />
+                Yangi kategoriya qo&apos;shish
+              </h3>
+              <form onSubmit={handleCategorySubmit} className="flex flex-wrap gap-3 items-end">
+                <div className="flex-1 min-w-[160px] space-y-1">
+                  <label className="text-xs font-bold text-[#64748B] block">Kategoriya nomi</label>
+                  <input
+                    type="text"
+                    required
+                    value={newCatName}
+                    onChange={(e) => setNewCatName(e.target.value)}
+                    placeholder="Misol, Sabzavotlar..."
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-[#E2E8F0] rounded-xl font-semibold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="bg-[#2563eb] hover:bg-[#004ac6] text-white px-6 py-2.5 rounded-xl font-bold text-xs cursor-pointer transition-all shadow-md select-none whitespace-nowrap"
+                >
+                  Qo&apos;shish
+                </button>
+              </form>
             </div>
           </div>
         )}
@@ -988,9 +784,15 @@ export default function AdminView({
         {/* Tab 3: Store Configuration Terminal */}
         {activeSubTab === 'settings' && (
           <div className="space-y-6">
-            <div>
-              <h1 className="text-2xl font-bold text-[#1E293B]">Tizim sozlamalari</h1>
-              <p className="text-sm text-[#64748B]">Xizmat ko&apos;rsatish nuqtasi ma&apos;lumotlari va texnik konfig-laj</p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h1 className="text-2xl font-bold text-[#1E293B]">Tizim sozlamalari</h1>
+                <p className="text-sm text-[#64748B]">Xizmat ko&apos;rsatish nuqtasi ma&apos;lumotlari va texnik konfig-laj</p>
+              </div>
+              <div className="shrink-0 flex items-center gap-2 bg-[#f0f3ff] border border-[#dee8ff] rounded-xl px-3 py-2">
+                <Store className="w-3.5 h-3.5 text-[#2563eb]" />
+                <span className="text-xs font-bold text-[#2563eb]">{activeStore.name}</span>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1536,207 +1338,265 @@ export default function AdminView({
         </div>
       )}
 
+      {showScanner && (
+        <BarcodeScanner
+          onScan={(barcode) => {
+            setFormData(prev => ({ ...prev, barcode }));
+            setShowScanner(false);
+          }}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
+
       {/* Product ADD/EDIT Modal Frame */}
       {isProductModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-[500px] rounded-[24px] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-[#1E293B]">
-            
+        <div style={{ position:'fixed', inset:0, zIndex:50, background:'rgba(15,23,42,0.65)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+          <div style={{ background:'white', width:'100%', maxWidth:'560px', borderRadius:'24px', boxShadow:'0 32px 80px rgba(0,0,0,0.35)', display:'flex', flexDirection:'column', maxHeight:'92vh', overflow:'hidden', color:'#1E293B' }}>
+
             {/* Modal Header */}
-            <div className="p-5 border-b border-[#E2E8F0] flex justify-between items-center bg-slate-50">
-              <h3 className="text-sm font-bold text-[#1E293B]">
-                {editingProduct ? `Tovar ma&apos;lumotlarini tahrirlash` : `Yangi mahsulot kiritish`}
-              </h3>
-              <button 
-                onClick={() => setIsProductModalOpen(false)}
-                className="p-1.5 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"
-              >
-                <X className="w-4 h-4" />
+            <div style={{ padding:'20px 24px 18px', background:'linear-gradient(135deg,#2563eb 0%,#1d4ed8 100%)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
+                <div style={{ width:'40px', height:'40px', borderRadius:'12px', background:'rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center', color:'white' }}>
+                  {renderIcon('Package', 'w-5 h-5')}
+                </div>
+                <div>
+                  <p style={{ fontSize:'15px', fontWeight:900, color:'white', margin:0 }}>
+                    {editingProduct ? 'Tovarni tahrirlash' : 'Yangi mahsulot'}
+                  </p>
+                  <p style={{ fontSize:'11px', color:'rgba(255,255,255,0.65)', margin:0, marginTop:'2px' }}>
+                    {editingProduct ? editingProduct.name : "Omborga yangi tovar qo'shish"}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setIsProductModalOpen(false)} style={{ width:'32px', height:'32px', borderRadius:'50%', background:'rgba(255,255,255,0.15)', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'white' }}>
+                <X style={{ width:'16px', height:'16px' }} />
               </button>
             </div>
 
-            {/* Content area */}
-            <form onSubmit={handleProductSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
-              
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#64748B]">Mahsulot to&apos;liq nomi</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Coca-Cola 0.5L yoki non..."
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-semibold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs"
-                />
-              </div>
+            {/* Form */}
+            <form onSubmit={handleProductSubmit} style={{ flex:1, overflowY:'auto', padding:'20px 24px', display:'flex', flexDirection:'column', gap:'18px' }}>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#64748B]">Turkumi (Guruh/Kategoriya)</label>
-                  <select
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-bold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs"
+              {/* § 1 — Asosiy */}
+              <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+                  <span style={{ fontSize:'10px', fontWeight:800, color:'#94A3B8', letterSpacing:'0.1em', textTransform:'uppercase' }}>01 · Asosiy ma'lumot</span>
+                  <div style={{ flex:1, height:'1px', background:'#E2E8F0' }} />
+                </div>
+
+                {/* Name */}
+                <div style={{ display:'flex', flexDirection:'column', gap:'5px' }}>
+                  <label style={{ fontSize:'11px', fontWeight:700, color:'#475569' }}>Mahsulot to'liq nomi</label>
+                  <input type="text" value={formData.name}
+                    onChange={e => { setFormData({...formData, name:e.target.value}); setFormErrors(fe=>({...fe,name:''})); }}
+                    placeholder="Masalan: Coca-Cola 0.5L, Non va h.z..."
+                    style={{ padding:'10px 14px', background:'#F8FAFC', border:`1.5px solid ${formErrors.name?'#F87171':'#E2E8F0'}`, borderRadius:'12px', fontSize:'13px', fontWeight:600, outline:'none', width:'100%', boxSizing:'border-box' }}
+                  />
+                  {formErrors.name && <p style={{ fontSize:'10px', color:'#EF4444', fontWeight:600, margin:0 }}>{formErrors.name}</p>}
+                </div>
+
+                {/* Category */}
+                <div style={{ display:'flex', flexDirection:'column', gap:'5px' }}>
+                  <label style={{ fontSize:'11px', fontWeight:700, color:'#475569' }}>Kategoriya</label>
+                  <select value={formData.category}
+                    onChange={e => setFormData({...formData, category:e.target.value})}
+                    style={{ padding:'10px 14px', background:'#F8FAFC', border:'1.5px solid #E2E8F0', borderRadius:'12px', fontSize:'13px', fontWeight:700, outline:'none', cursor:'pointer', width:'100%' }}
                   >
                     {categories.filter(c => c.id !== 'all').map(cat => (
                       <option key={cat.id} value={cat.id}>{cat.name}</option>
                     ))}
                   </select>
                 </div>
+              </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#64748B]">Shtrix Kodi (Barcode)</label>
-                  <div className="flex gap-1.5">
-                    <input
-                      type="text"
-                      required
-                      value={formData.barcode}
-                      onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                      placeholder="12 xonali kod..."
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-bold font-mono focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs"
+              {/* § 2 — Barcode */}
+              <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+                  <span style={{ fontSize:'10px', fontWeight:800, color:'#94A3B8', letterSpacing:'0.1em', textTransform:'uppercase' }}>02 · Shtrix kodi (EAN-13)</span>
+                  <div style={{ flex:1, height:'1px', background:'#E2E8F0' }} />
+                </div>
+
+                <div style={{ display:'flex', flexDirection:'column', gap:'5px' }}>
+                  <label style={{ fontSize:'11px', fontWeight:700, color:'#475569' }}>Barcode</label>
+                  <div style={{ display:'flex', gap:'8px' }}>
+                    <input type="text" value={formData.barcode}
+                      onChange={e => { setFormData({...formData, barcode:e.target.value}); setFormErrors(fe=>({...fe,barcode:''})); }}
+                      onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
+                      placeholder="13 xonali kod..."
+                      style={{ flex:1, padding:'10px 14px', background:'#F8FAFC', border:`1.5px solid ${formErrors.barcode?'#F87171':'#E2E8F0'}`, borderRadius:'12px', fontSize:'12px', fontWeight:700, fontFamily:'monospace', outline:'none', letterSpacing:'0.05em' }}
                     />
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, barcode: Math.floor(100000000000 + Math.random() * 900000000000).toString() })}
-                      className="bg-slate-200 px-2.5 rounded-xl border border-slate-300 text-slate-700 text-[10px] font-bold shrink-0 hover:bg-slate-300 active:scale-95 transition-all"
+                    <button type="button" onClick={() => setShowScanner(true)}
+                      style={{ padding:'10px 14px', background:'#F1F5F9', border:'1px solid #E2E8F0', borderRadius:'12px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}
                     >
-                      Generatsiya
+                      <Camera style={{ width:'20px', height:'20px', strokeWidth:1.5, color:'#475569' }} />
                     </button>
+                    <button type="button" onClick={() => setFormData({...formData, barcode:generateBarcode()})}
+                      style={{ padding:'10px 16px', background:'#2563eb', border:'none', borderRadius:'12px', fontSize:'11px', fontWeight:800, color:'white', cursor:'pointer', whiteSpace:'nowrap' }}
+                    >
+                      Auto-generatsiya
+                    </button>
+                  </div>
+                  {formErrors.barcode && <p style={{ fontSize:'10px', color:'#EF4444', fontWeight:600, margin:0 }}>{formErrors.barcode}</p>}
+                </div>
+
+                {/* EAN-13 canvas preview */}
+                {formData.barcode.replace(/\D/g,'').length >= 8 && (
+                  <div style={{ background:'#F8FAFC', border:'1.5px solid #E2E8F0', borderRadius:'12px', padding:'12px', display:'flex', flexDirection:'column', alignItems:'center', gap:'4px' }}>
+                    <canvas ref={barcodeCanvasRef} style={{ maxWidth:'100%', imageRendering:'crisp-edges' }} />
+                    <p style={{ fontSize:'9px', color:'#94A3B8', fontWeight:700, margin:0, letterSpacing:'0.1em' }}>EAN-13 PREVIEW</p>
+                  </div>
+                )}
+              </div>
+
+              {/* § 3 — Narxlar */}
+              <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+                  <span style={{ fontSize:'10px', fontWeight:800, color:'#94A3B8', letterSpacing:'0.1em', textTransform:'uppercase' }}>03 · Narxlar</span>
+                  <div style={{ flex:1, height:'1px', background:'#E2E8F0' }} />
+                </div>
+
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                  <div style={{ display:'flex', flexDirection:'column', gap:'5px' }}>
+                    <label style={{ fontSize:'11px', fontWeight:700, color:'#475569' }}>Tan narxi (kelish) — UZS</label>
+                    <input type="number" min={0} value={formData.costPrice||''}
+                      onChange={e => { setFormData({...formData, costPrice:parseFloat(e.target.value)||0}); setFormErrors(fe=>({...fe,costPrice:'',price:''})); }}
+                      placeholder="0"
+                      style={{ padding:'10px 14px', background:'#F0FDF4', border:`1.5px solid ${formErrors.costPrice?'#F87171':'#BBF7D0'}`, borderRadius:'12px', fontSize:'13px', fontWeight:700, fontFamily:'monospace', color:'#16A34A', outline:'none' }}
+                    />
+                    {formErrors.costPrice && <p style={{ fontSize:'10px', color:'#EF4444', fontWeight:600, margin:0 }}>{formErrors.costPrice}</p>}
+                  </div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:'5px' }}>
+                    <label style={{ fontSize:'11px', fontWeight:700, color:'#475569' }}>Sotish narxi (kassa) — UZS</label>
+                    <input type="number" min={0} value={formData.price||''}
+                      onChange={e => { setFormData({...formData, price:parseFloat(e.target.value)||0}); setFormErrors(fe=>({...fe,price:''})); }}
+                      placeholder="0"
+                      style={{ padding:'10px 14px', background:'#EFF6FF', border:`1.5px solid ${formErrors.price?'#F87171':'#BFDBFE'}`, borderRadius:'12px', fontSize:'13px', fontWeight:700, fontFamily:'monospace', color:'#2563eb', outline:'none' }}
+                    />
+                    {formErrors.price && <p style={{ fontSize:'10px', color:'#EF4444', fontWeight:600, margin:0 }}>{formErrors.price}</p>}
+                  </div>
+                </div>
+
+                {/* Reactive margin */}
+                {formData.costPrice > 0 && formData.price > 0 && (() => {
+                  const profit = formData.price - formData.costPrice;
+                  const pct = Math.round((profit / formData.costPrice) * 100);
+                  const ok = profit > 0;
+                  return (
+                    <div style={{ borderRadius:'12px', padding:'10px 16px', background:ok?'#F0FDF4':'#FEF2F2', border:`1.5px solid ${ok?'#86EFAC':'#FECACA'}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+                        <span style={{ fontSize:'16px' }}>{ok?'📈':'⚠️'}</span>
+                        <span style={{ fontSize:'11px', fontWeight:700, color:ok?'#15803D':'#B91C1C' }}>{ok?'Foyda (ustama)':'Diqqat: zarar!'}</span>
+                      </div>
+                      <span style={{ fontSize:'13px', fontWeight:900, color:ok?'#16A34A':'#DC2626' }}>
+                        {ok ? `+${profit.toLocaleString('uz-UZ')} UZS · ${pct}%` : `-${Math.abs(profit).toLocaleString('uz-UZ')} UZS`}
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* § 4 — Inventar */}
+              <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+                  <span style={{ fontSize:'10px', fontWeight:800, color:'#94A3B8', letterSpacing:'0.1em', textTransform:'uppercase' }}>04 · Inventar</span>
+                  <div style={{ flex:1, height:'1px', background:'#E2E8F0' }} />
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                  <div style={{ display:'flex', flexDirection:'column', gap:'5px' }}>
+                    <label style={{ fontSize:'11px', fontWeight:700, color:'#475569' }}>Ombor zaxirasi (dona)</label>
+                    <input type="number" min={0} value={formData.stock||''}
+                      onChange={e => { setFormData({...formData, stock:parseInt(e.target.value)||0}); setFormErrors(fe=>({...fe,stock:''})); }}
+                      placeholder="0"
+                      style={{ padding:'10px 14px', background:'#F8FAFC', border:`1.5px solid ${formErrors.stock?'#F87171':'#E2E8F0'}`, borderRadius:'12px', fontSize:'13px', fontWeight:700, fontFamily:'monospace', outline:'none' }}
+                    />
+                    {formErrors.stock && <p style={{ fontSize:'10px', color:'#EF4444', fontWeight:600, margin:0 }}>{formErrors.stock}</p>}
+                  </div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:'5px' }}>
+                    <label style={{ fontSize:'11px', fontWeight:700, color:'#475569' }}>Kam qolganlik chegarasi</label>
+                    <input type="number" min={1} value={formData.lowStockThreshold||''}
+                      onChange={e => setFormData({...formData, lowStockThreshold:parseInt(e.target.value)||5})}
+                      placeholder="5"
+                      style={{ padding:'10px 14px', background:'#FFFBEB', border:'1.5px solid #FDE68A', borderRadius:'12px', fontSize:'13px', fontWeight:700, fontFamily:'monospace', color:'#B45309', outline:'none' }}
+                    />
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#64748B]">Tan narxi (Kelish narxi) - UZS</label>
-                  <input
-                    type="number"
-                    required
-                    min={0}
-                    value={formData.costPrice || ''}
-                    onChange={(e) => setFormData({ ...formData, costPrice: parseFloat(e.target.value) || 0 })}
-                    placeholder="Kelgan narxi..."
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-bold font-mono focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs text-green-700"
-                  />
+              {/* § 5 — Mahsulot rasmi */}
+              <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+                  <span style={{ fontSize:'10px', fontWeight:800, color:'#94A3B8', letterSpacing:'0.1em', textTransform:'uppercase' }}>05 · Mahsulot rasmi</span>
+                  <div style={{ flex:1, height:'1px', background:'#E2E8F0' }} />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#64748B]">Sotish narxi (Kassadagi) - UZS</label>
-                  <input
-                    type="number"
-                    required
-                    min={0}
-                    value={formData.price || ''}
-                    onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-                    placeholder="Sotiladigan narx..."
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-bold font-mono focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs text-[#2563eb]"
+                {/* URL input + fayl tugmasi + mini preview */}
+                <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+                  {/* Mini preview */}
+                  {formData.image && (
+                    <div style={{ width:'40px', height:'40px', borderRadius:'10px', overflow:'hidden', border:'1.5px solid #E2E8F0', background:'#F1F5F9', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <img src={formData.image} alt="preview"
+                        style={{ width:'40px', height:'40px', objectFit:'cover' }}
+                        onError={e => { (e.currentTarget as HTMLImageElement).style.display='none'; }}
+                      />
+                    </div>
+                  )}
+
+                  {/* URL input */}
+                  <input type="url" value={formData.image}
+                    onChange={e => setFormData({...formData, image:e.target.value})}
+                    placeholder="https://images.unsplash.com/..."
+                    style={{ flex:1, padding:'10px 14px', background:'#F8FAFC', border:'1.5px solid #E2E8F0', borderRadius:'12px', fontSize:'12px', fontWeight:500, outline:'none', minWidth:0 }}
                   />
+
+                  {/* Fayl tugmasi */}
+                  <input
+                    id="img-file-input"
+                    type="file"
+                    accept="image/*"
+                    style={{ display:'none' }}
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = ev => {
+                        setFormData(prev => ({ ...prev, image: ev.target?.result as string }));
+                      };
+                      reader.readAsDataURL(file);
+                      e.target.value = '';
+                    }}
+                  />
+                  <button type="button"
+                    onClick={() => document.getElementById('img-file-input')?.click()}
+                    title="Fayldan rasm yuklash"
+                    style={{ padding:'10px 14px', background:'#F8FAFC', border:'1px solid #E2E8F0', borderRadius:'12px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}
+                  >
+                    <UploadCloud style={{ width:'18px', height:'18px', strokeWidth:1.5, color:'#475569' }} />
+                  </button>
                 </div>
+
+                {/* Katta preview (URL bo'lsa) */}
+                {formData.image && (
+                  <div style={{ borderRadius:'12px', overflow:'hidden', border:'1.5px solid #E2E8F0', height:'96px', background:'#F1F5F9', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    <img src={formData.image} alt="preview"
+                      style={{ maxHeight:'96px', maxWidth:'100%', objectFit:'contain' }}
+                      onError={e => { (e.currentTarget as HTMLImageElement).style.display='none'; }}
+                    />
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#64748B]">Ombor Zaxirasining Soni</label>
-                  <input
-                    type="number"
-                    required
-                    min={0}
-                    value={formData.stock || ''}
-                    onChange={(e) => setFormData({ ...formData, stock: parseInt(e.target.value) || 0 })}
-                    placeholder="Qoldiq soni..."
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-bold font-mono focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#64748B]">Kam Qolganlik Chegarasi</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={formData.lowStockThreshold || ''}
-                    onChange={(e) => setFormData({ ...formData, lowStockThreshold: parseInt(e.target.value) || 5 })}
-                    placeholder="Misol, 5 tadan kam qolsa ogohlantirish"
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-bold font-mono focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#64748B]">Tovar Rasm URL manzili (Ixtiyoriy)</label>
-                <input
-                  type="url"
-                  value={formData.image}
-                  onChange={(e) => setFormData({ ...formData, image: e.target.value })}
-                  placeholder="https://images.unsplash.com/your-image-url..."
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs font-medium"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-[#F1F5F9] flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsProductModalOpen(false)}
-                  className="flex-1 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-bold py-2.5 rounded-xl text-xs cursor-pointer select-none transition-all"
+              {/* Footer */}
+              <div style={{ paddingTop:'8px', borderTop:'1.5px solid #F1F5F9', display:'flex', gap:'12px' }}>
+                <button type="button" onClick={() => setIsProductModalOpen(false)}
+                  style={{ flex:1, padding:'12px', background:'#F1F5F9', border:'1.5px solid #E2E8F0', borderRadius:'14px', fontSize:'13px', fontWeight:700, color:'#475569', cursor:'pointer' }}
                 >
                   Bekor qilish
                 </button>
-                <button
-                  type="submit"
-                  className="flex-1 bg-[#2563eb] hover:bg-[#004ac6] text-white font-bold py-2.5 rounded-xl text-xs cursor-pointer select-none transition-all shadow-md"
+                <button type="submit"
+                  style={{ flex:2, padding:'12px', background:'linear-gradient(135deg,#2563eb 0%,#1d4ed8 100%)', border:'none', borderRadius:'14px', fontSize:'13px', fontWeight:800, color:'white', cursor:'pointer', boxShadow:'0 4px 14px rgba(37,99,235,0.35)' }}
                 >
-                  {editingProduct ? 'Tahrirlarni Saqlash' : 'Tovar qo\'shish'}
+                  {editingProduct ? '✓ Tahrirlarni saqlash' : "+ Tovar qo'shish"}
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Add Category Modal Frame */}
-      {isCategoryModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-[380px] rounded-[24px] shadow-2xl flex flex-col p-6 overflow-hidden animate-in fade-in zoom-in-95 duration-150 text-[#1E293B]">
-            <div className="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
-              <h3 className="font-bold text-sm text-[#1E293B]">Yangi Kategoriya qo&apos;shish</h3>
-              <button onClick={() => setIsCategoryModalOpen(false)} className="p-1 hover:bg-slate-100 rounded-full"><X className="w-4 h-4" /></button>
-            </div>
-            
-            <form onSubmit={handleCategorySubmit} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#64748B] block">Kategoriya nomi</label>
-                <input
-                  type="text"
-                  required
-                  value={newCatName}
-                  onChange={(e) => setNewCatName(e.target.value)}
-                  placeholder="Misol, Sabzavotlar..."
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-[#E2E8F0] rounded-xl font-semibold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#64748B] block">Dizayn Belgisi (Lucide Icon)</label>
-                <select
-                  value={newCatIcon}
-                  onChange={(e) => setNewCatIcon(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-[#E2E8F0] rounded-xl font-bold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs text-[#1E293B]"
-                >
-                  <option value="Package">Standard Quti (Package)</option>
-                  <option value="Coffee">Kofe (Coffee)</option>
-                  <option value="Apple">Olma (Apple)</option>
-                  <option value="Grape">Uzum (Grape)</option>
-                  <option value="Notebook">Daftar (Notebook)</option>
-                  <option value="Sparkles">Tozalash (Sparkles)</option>
-                  <option value="Shirt">Kiyimlar (Shirt)</option>
-                  <option value="Hammer">Asboblar (Hammer)</option>
-                </select>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-[#2563eb] hover:bg-[#003ea8] hover:shadow text-white py-2.5 rounded-xl font-bold text-xs cursor-pointer select-none transition-all shadow-md mt-4"
-              >
-                Guruhni yaratish
-              </button>
             </form>
           </div>
         </div>

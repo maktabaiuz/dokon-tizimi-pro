@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Printer, Scan, Sliders, ChevronRight, Eye, Info, X } from 'lucide-react';
+import { Printer, Scan, Sliders, ChevronRight, Eye, Info, X, Camera } from 'lucide-react';
 import { Product } from '../types';
+import BarcodeScanner from './BarcodeScanner';
 
 interface BarkodViewProps {
   products: Product[];
@@ -9,6 +10,13 @@ interface BarkodViewProps {
 export default function BarkodView({ products }: BarkodViewProps) {
   const [selectedProductId, setSelectedProductId] = useState<string>(products[0]?.id || '');
   const [printCount, setPrintCount] = useState<number>(12);
+  const [showScanner, setShowScanner] = useState(false);
+  const [barcodeInput, setBarcodeInput] = useState('');
+
+  const handleBarcodeSearch = (value: string) => {
+    const found = products.find(p => p.barcode === value.trim());
+    if (found) { setSelectedProductId(found.id); setBarcodeInput(''); }
+  };
 
   // Find exact product details
   const selectedProduct = products.find(p => p.id === selectedProductId) || products[0];
@@ -34,6 +42,16 @@ export default function BarkodView({ products }: BarkodViewProps) {
 
   return (
     <div className="flex-1 p-6 flex flex-col lg:flex-row gap-6 bg-[#F9F9FF] overflow-y-auto custom-scrollbar select-none">
+      {showScanner && (
+        <BarcodeScanner
+          onScan={(barcode) => {
+            const found = products.find(p => p.barcode === barcode);
+            if (found) setSelectedProductId(found.id);
+            setShowScanner(false);
+          }}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
       
       {/* Sidebar: Selection and Controllers Pane (33%) */}
       <section className="w-full lg:w-[35%] space-y-6">
@@ -55,6 +73,34 @@ export default function BarkodView({ products }: BarkodViewProps) {
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
+            </div>
+
+            {/* USB/Kamera skaner input */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#64748B] block">Barkod bilan qidirish</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={barcodeInput}
+                  onChange={e => setBarcodeInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleBarcodeSearch(barcodeInput); }}
+                  placeholder="USB skaner yoki qo'lda kiriting..."
+                  className="flex-1 bg-white border border-[#CBD5E1] rounded-xl p-3 text-xs font-mono font-semibold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-[#1E293B]"
+                />
+                <button
+                  onClick={() => setShowScanner(true)}
+                  title="Kamera bilan skanerlash"
+                  style={{
+                    padding: '10px 14px',
+                    background: '#F1F5F9',
+                    border: '1px solid #E2E8F0',
+                    borderRadius: '12px',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                  <Camera style={{ width: '20px', height: '20px', strokeWidth: 1.5, color: '#475569' }} />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-1">

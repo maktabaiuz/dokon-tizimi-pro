@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ShoppingBag,
   Settings,
@@ -9,9 +9,11 @@ import {
   Store,
   Clock,
   Sparkles,
+  ChevronDown,
+  Check,
 } from 'lucide-react';
-import { Product, Category, CartItem, Debt, Sale, ActiveShift, StoreSettings, Cashier } from './types';
-import { loadProducts, saveProducts, loadCategories, saveCategories, loadSales, saveSales, loadDebts, saveDebts, loadSettings, saveSettings, loadCashiers, saveCashiers } from './utils/storage';
+import { Product, Category, CartItem, Debt, Sale, ActiveShift, StoreSettings, Cashier, Store as StoreType } from './types';
+import { loadCashiers, saveCashiers, loadStores, saveStores, loadActiveStoreId, saveActiveStoreId, loadStoreData, saveStoreData } from './utils/storage';
 import {
   INITIAL_PRODUCTS,
   INITIAL_CATEGORIES,
@@ -35,29 +37,72 @@ export default function App() {
   const [cashierName, setCashierName] = useState<string>('');
   const [cashierRole, setCashierRole] = useState<'owner' | 'cashier'>('cashier');
 
-  // Cashiers database
+  // Cashiers database (global, not per-store)
   const [cashiers, setCashiers] = useState<Cashier[]>(() => loadCashiers() ?? INITIAL_CASHIERS);
   useEffect(() => { saveCashiers(cashiers); }, [cashiers]);
 
-  // Primary shared databases
-  const [products, setProducts] = useState<Product[]>(() => loadProducts() ?? INITIAL_PRODUCTS);
-  const [categories, setCategories] = useState<Category[]>(() => loadCategories() ?? INITIAL_CATEGORIES);
-  const [debts, setDebts] = useState<Debt[]>(() => loadDebts() ?? INITIAL_DEBTS);
-  const [sales, setSales] = useState<Sale[]>(() => loadSales() ?? INITIAL_SALES);
-  
+  // Multi-store state
+  const DEFAULT_STORE: StoreType = { id: 'store1', name: "Do'kon 1", address: '', phone: '' };
+  const [stores, setStores] = useState<StoreType[]>(() => loadStores() ?? [DEFAULT_STORE]);
+  const [activeStoreId, setActiveStoreId] = useState<string>(() => loadActiveStoreId() ?? 'store1');
+  const [showStoreDropdown, setShowStoreDropdown] = useState(false);
+  const storeDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Ref always tracks current activeStoreId for save effects
+  const activeStoreIdRef = useRef(activeStoreId);
+  activeStoreIdRef.current = activeStoreId;
+
+  useEffect(() => { saveStores(stores); }, [stores]);
+  useEffect(() => { saveActiveStoreId(activeStoreId); }, [activeStoreId]);
+
+  // Click-outside closes store dropdown
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (storeDropdownRef.current && !storeDropdownRef.current.contains(e.target as Node))
+        setShowStoreDropdown(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Per-store databases — loaded for the initial activeStoreId
+  const [products, setProducts] = useState<Product[]>(() => {
+    const sid = loadActiveStoreId() ?? 'store1';
+    return loadStoreData<Product[]>(sid, 'products') ?? INITIAL_PRODUCTS;
+  });
+  const [categories, setCategories] = useState<Category[]>(() => {
+    const sid = loadActiveStoreId() ?? 'store1';
+    const saved = loadStoreData<Category[]>(sid, 'categories');
+    const OLD_IDS = ['drinks', 'fruits', 'stationery'];
+    if (!saved || saved.some(c => OLD_IDS.includes(c.id))) return INITIAL_CATEGORIES;
+    return saved;
+  });
+  const [debts, setDebts] = useState<Debt[]>(() => {
+    const sid = loadActiveStoreId() ?? 'store1';
+    return loadStoreData<Debt[]>(sid, 'debts') ?? INITIAL_DEBTS;
+  });
+  const [sales, setSales] = useState<Sale[]>(() => {
+    const sid = loadActiveStoreId() ?? 'store1';
+    return loadStoreData<Sale[]>(sid, 'sales') ?? INITIAL_SALES;
+  });
+
   // Shared config & session values
-  const [settings, setSettings] = useState<StoreSettings>(() => loadSettings() ?? INITIAL_SETTINGS);
+  const [settings, setSettings] = useState<StoreSettings>(() => {
+    const sid = loadActiveStoreId() ?? 'store1';
+    return loadStoreData<StoreSettings>(sid, 'settings') ?? INITIAL_SETTINGS;
+  });
   const [activeTab, setActiveTab] = useState<'kassa' | 'admin' | 'hisobot' | 'barkod' | 'smena' | 'ai'>('kassa');
-  
+
   // Multi-cart state (3 parallel carts)
   const [carts, setCarts] = useState<CartItem[][]>([[], [], []]);
   const [activeCart, setActiveCart] = useState<0 | 1 | 2>(0);
 
-  useEffect(() => { saveProducts(products); }, [products]);
-  useEffect(() => { saveCategories(categories); }, [categories]);
-  useEffect(() => { saveSales(sales); }, [sales]);
-  useEffect(() => { saveDebts(debts); }, [debts]);
-  useEffect(() => { saveSettings(settings); }, [settings]);
+  // Save per-store data (always to activeStoreIdRef, which is up-to-date during render)
+  useEffect(() => { saveStoreData(activeStoreIdRef.current, 'products', products); }, [products]);
+  useEffect(() => { saveStoreData(activeStoreIdRef.current, 'categories', categories); }, [categories]);
+  useEffect(() => { saveStoreData(activeStoreIdRef.current, 'sales', sales); }, [sales]);
+  useEffect(() => { saveStoreData(activeStoreIdRef.current, 'debts', debts); }, [debts]);
+  useEffect(() => { saveStoreData(activeStoreIdRef.current, 'settings', settings); }, [settings]);
 
   // Shift management logs
   const [activeShift, setActiveShift] = useState<ActiveShift>({
@@ -76,7 +121,7 @@ export default function App() {
     setCashierName(cashier.name);
     setCashierRole(cashier.role);
     setIsLoggedIn(true);
-    setActiveTab('kassa');
+    setActiveTab(cashier.role === 'owner' ? 'admin' : 'kassa');
   };
 
   const handleLogout = () => {
@@ -95,6 +140,33 @@ export default function App() {
   };
   const handleDeleteCashier = (id: string) => {
     setCashiers(prev => prev.filter(c => c.id !== id));
+  };
+
+  // Store management — derived from cashiers
+  const activeCashierEntry = cashiers.find(c => c.id === activeStoreId);
+  const activeStore: StoreType = activeCashierEntry
+    ? { id: activeStoreId, name: activeCashierEntry.storeLabel, address: settings.address, phone: settings.phone }
+    : (stores.find(s => s.id === activeStoreId) ?? { id: activeStoreId, name: settings.storeName, address: settings.address, phone: settings.phone });
+
+  const handleChangeStore = (newStoreId: string) => {
+    const newProducts = loadStoreData<Product[]>(newStoreId, 'products') ?? INITIAL_PRODUCTS;
+    const newSaved = loadStoreData<Category[]>(newStoreId, 'categories');
+    const OLD_IDS = ['drinks', 'fruits', 'stationery'];
+    const newCategories = (!newSaved || newSaved.some(c => OLD_IDS.includes(c.id))) ? INITIAL_CATEGORIES : newSaved;
+    const newSettings = loadStoreData<StoreSettings>(newStoreId, 'settings') ?? INITIAL_SETTINGS;
+    const newDebts = loadStoreData<Debt[]>(newStoreId, 'debts') ?? INITIAL_DEBTS;
+    const newSales = loadStoreData<Sale[]>(newStoreId, 'sales') ?? INITIAL_SALES;
+    setActiveStoreId(newStoreId);
+    setProducts(newProducts);
+    setCategories(newCategories);
+    setSettings(newSettings);
+    setDebts(newDebts);
+    setSales(newSales);
+    setCarts([[], [], []]);
+  };
+
+  const handleUpdateStore = (updated: StoreType) => {
+    setStores(prev => prev.map(s => s.id === updated.id ? updated : s));
   };
 
   // Action: Add Product to Basket (Kassa view)
@@ -203,7 +275,7 @@ export default function App() {
   const handleAddProduct = (pData: Omit<Product, 'id'>) => {
     const newProd: Product = {
       ...pData,
-      id: `prod-${products.length + 1}`,
+      id: `prod-${Date.now()}`,
     };
     setProducts((prev) => [newProd, ...prev]);
   };
@@ -234,6 +306,10 @@ export default function App() {
     setCategories((prev) => [...prev, newCat]);
   };
 
+  const handleDeleteCategory = (id: string) => {
+    setCategories((prev) => prev.filter(c => c.id !== id));
+  };
+
   // Action: Close active cashier shift
   const handleCloseShift = () => {
     setActiveShift({
@@ -261,11 +337,15 @@ export default function App() {
     if (!matchedSale) return;
 
     // 1. Refund the stock back
-    setProducts(prevProducts => 
+    setProducts(prevProducts =>
       prevProducts.map(p => {
         const returnedItem = matchedSale.items.find(it => it.productId === p.id);
         if (returnedItem) {
-          return { ...p, stock: p.stock + returnedItem.quantity };
+          return {
+            ...p,
+            stock: p.stock + returnedItem.quantity,
+            soldCount: Math.max(0, (p.soldCount || 0) - returnedItem.quantity),
+          };
         }
         return p;
       })
@@ -320,26 +400,53 @@ export default function App() {
                 PRO v1.0 &middot; {cashierName}
               </p>
             </div>
+            {/* Store selector — owner only, derived from cashiers */}
+            {isOwner && (
+              <div className="relative ml-2" ref={storeDropdownRef}>
+                <button
+                  onClick={() => setShowStoreDropdown(v => !v)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f0f3ff] border border-[#dee8ff] rounded-xl text-xs font-bold text-[#2563eb] hover:bg-[#e8edff] transition-all cursor-pointer select-none"
+                >
+                  <span className="max-w-[110px] truncate">{activeStore.name}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${showStoreDropdown ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showStoreDropdown && (
+                  <div className="absolute top-full left-0 mt-1.5 w-56 bg-white border border-[#E2E8F0] rounded-2xl shadow-xl z-50 py-1.5 overflow-hidden">
+                    {cashiers.map(cashier => (
+                      <button
+                        key={cashier.id}
+                        onClick={() => { handleChangeStore(cashier.id); setShowStoreDropdown(false); }}
+                        className={`w-full text-left px-3 py-2.5 text-xs font-semibold flex items-center gap-2.5 transition-all ${cashier.id === activeStoreId ? 'text-[#2563eb] bg-[#f0f3ff]' : 'text-[#1E293B] hover:bg-slate-50'}`}
+                      >
+                        <Check className={`w-3.5 h-3.5 shrink-0 ${cashier.id === activeStoreId ? 'opacity-100' : 'opacity-0'}`} />
+                        <div className="min-w-0">
+                          <p className="truncate font-bold">{cashier.storeLabel}</p>
+                          <p className="text-[10px] text-slate-400 font-medium truncate">{cashier.name}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Core horizontal app headers navigation */}
           <nav className="flex items-center gap-1 sm:gap-2">
-            <button
-              onClick={() => setActiveTab('kassa')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-                activeTab === 'kassa'
-                  ? 'bg-[#2563eb]/10 text-[#2563eb]'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <ShoppingBag className="w-4 h-4" />
-              <span className="hidden sm:inline">Kassa</span>
-              {isOwner && lowStockCount > 0 && (
-                <span className="bg-amber-400 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none">
-                  {lowStockCount}
-                </span>
-              )}
-            </button>
+            {!isOwner && (
+              <button
+                onClick={() => setActiveTab('kassa')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  activeTab === 'kassa'
+                    ? 'bg-[#2563eb]/10 text-[#2563eb]'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <ShoppingBag className="w-4 h-4" />
+                <span className="hidden sm:inline">Kassa</span>
+              </button>
+            )}
 
             {!isOwner && (
               <button
@@ -448,6 +555,8 @@ export default function App() {
             onUpdateCartQuantity={handleUpdateCartQuantity}
             onClearCart={handleClearCart}
             onCheckout={handleCheckoutSubmit}
+            cashierName={cashierName}
+            settings={settings}
           />
         )}
 
@@ -457,11 +566,14 @@ export default function App() {
             categories={categories}
             settings={settings}
             cashiers={cashiers}
+            activeStore={activeStore}
             onAddProduct={handleAddProduct}
             onUpdateProduct={handleUpdateProduct}
             onDeleteProduct={handleDeleteProduct}
             onUpdateSettings={handleUpdateSettings}
+            onUpdateStore={handleUpdateStore}
             onAddCategory={handleAddCategory}
+            onDeleteCategory={handleDeleteCategory}
             onAddCashier={handleAddCashier}
             onUpdateCashier={handleUpdateCashier}
             onDeleteCashier={handleDeleteCashier}

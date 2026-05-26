@@ -1,4 +1,4 @@
-import { Product, Category, Sale, Debt, StoreSettings, Cashier } from '../types';
+import { Product, Category, Sale, Debt, StoreSettings, Cashier, Store } from '../types';
 
 const KEYS = {
   products: 'pos_products',
@@ -55,6 +55,44 @@ export function loadCashiers(): Cashier[] | null {
 }
 export function saveCashiers(data: Cashier[]) {
   localStorage.setItem(KEYS.cashiers, JSON.stringify(data));
+}
+
+// ── Multi-store support ──────────────────────────────────────────────────────
+
+export function loadStores(): Store[] | null {
+  try { const d = localStorage.getItem('pos_stores'); return d ? JSON.parse(d) : null; }
+  catch { return null; }
+}
+export function saveStores(data: Store[]) {
+  localStorage.setItem('pos_stores', JSON.stringify(data));
+}
+
+export function loadActiveStoreId(): string | null {
+  return localStorage.getItem('pos_active_store');
+}
+export function saveActiveStoreId(id: string) {
+  localStorage.setItem('pos_active_store', id);
+}
+
+export function loadStoreData<T>(storeId: string, key: string): T | null {
+  try {
+    const storeKey = `pos_${storeId}_${key}`;
+    const d = localStorage.getItem(storeKey);
+    if (d) return JSON.parse(d) as T;
+    // Migration: store1 falls back to old flat keys
+    if (storeId === 'store1') {
+      const legacy = localStorage.getItem(`pos_${key}`);
+      if (legacy) {
+        localStorage.setItem(storeKey, legacy);
+        return JSON.parse(legacy) as T;
+      }
+    }
+    return null;
+  } catch { return null; }
+}
+
+export function saveStoreData<T>(storeId: string, key: string, data: T) {
+  localStorage.setItem(`pos_${storeId}_${key}`, JSON.stringify(data));
 }
 
 export function exportAllData(): string {

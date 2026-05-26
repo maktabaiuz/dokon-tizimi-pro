@@ -79,3 +79,10 @@ export interface StoreSettings {
   paperSize: '58mm' | '80mm' | 'A4';
   operatorPin: string;
 }
+
+export interface Store {
+  id: string;
+  name: string;
+  address: string;
+  phone: string;
+}
