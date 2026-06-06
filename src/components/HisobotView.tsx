@@ -66,6 +66,7 @@ export default function HisobotView({
   // Debt payment states
   const [payingDebtId, setPayingDebtId] = useState<string | null>(null);
   const [payAmountInput, setPayAmountInput] = useState<string>('');
+  const [payError, setPayError] = useState<string>('');
 
   // Smena hisobot breakdown (bugungi sotuvlardan)
   const shiftNaqdTotal = sales
@@ -164,13 +165,13 @@ export default function HisobotView({
     .sort((a, b) => b.count - a.count)
     .slice(0, 4);
 
-  // Fallback top list if history is small
-  const finalTopProducts = topProductsArray.length > 0 ? topProductsArray : [
-    { name: 'Coca-Cola 0.5L', count: 3 },
-    { name: 'Sut Siyamo 1L', count: 2 },
-    { name: 'Lays Chips 80g', count: 1 },
-    { name: 'Non (Buxoro)', count: 1 },
-  ];
+  // Fallback: if no filtered sales, use product.soldCount field as source of truth
+  const finalTopProducts = topProductsArray.length > 0 ? topProductsArray :
+    [...products]
+      .filter(p => (p.soldCount || 0) > 0)
+      .sort((a, b) => (b.soldCount || 0) - (a.soldCount || 0))
+      .slice(0, 10)
+      .map(p => ({ name: p.name, count: p.soldCount || 0 }));
 
   // 4. Low stock levels
   const scarceProducts = products
@@ -500,26 +501,31 @@ export default function HisobotView({
                   </div>
 
                   {isPayingThis && !isPaid && (
-                    <div className="flex items-center gap-2 bg-slate-50 rounded-xl p-2 border border-[#E2E8F0]">
-                      <input
-                        type="number"
-                        value={payAmountInput}
-                        onChange={(e) => setPayAmountInput(e.target.value)}
-                        placeholder={`Maks: ${remaining.toLocaleString()}`}
-                        className="flex-1 px-3 py-1.5 bg-white border border-[#CBD5E1] rounded-lg font-mono text-xs outline-none focus:ring-2 focus:ring-[#2563eb]/20"
-                      />
-                      <button
-                        onClick={() => {
-                          const amt = Math.min(parseFloat(payAmountInput) || 0, remaining);
-                          if (amt <= 0) return;
-                          onPayDebt(dt.id, amt);
-                          setPayingDebtId(null);
-                          setPayAmountInput('');
-                        }}
-                        className="bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg cursor-pointer transition-colors shrink-0"
-                      >
-                        Tasdiqlash
-                      </button>
+                    <div className="flex flex-col gap-1.5 bg-slate-50 rounded-xl p-2 border border-[#E2E8F0]">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          value={payAmountInput}
+                          onChange={(e) => { setPayAmountInput(e.target.value); setPayError(''); }}
+                          placeholder={`Maks: ${remaining.toLocaleString()}`}
+                          className={`flex-1 px-3 py-1.5 bg-white border rounded-lg font-mono text-xs outline-none focus:ring-2 focus:ring-[#2563eb]/20 ${payError ? 'border-red-400' : 'border-[#CBD5E1]'}`}
+                        />
+                        <button
+                          onClick={() => {
+                            const val = parseFloat(payAmountInput) || 0;
+                            if (val <= 0) { setPayError("Summa 0 dan katta bo'lishi kerak"); return; }
+                            if (val > remaining) { setPayError(`Maksimal: ${remaining.toLocaleString()} UZS`); return; }
+                            onPayDebt(dt.id, val);
+                            setPayingDebtId(null);
+                            setPayAmountInput('');
+                            setPayError('');
+                          }}
+                          className="bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg cursor-pointer transition-colors shrink-0"
+                        >
+                          Tasdiqlash
+                        </button>
+                      </div>
+                      {payError && <p className="text-[10px] text-red-600 font-bold px-1">{payError}</p>}
                     </div>
                   )}
                 </div>

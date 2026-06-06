@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, ImagePlus, Bot, Loader2 } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Product, StoreSettings } from '../types';
 
 interface AIChatProps {
@@ -15,9 +17,20 @@ interface Message {
   imageUrl?: string;
 }
 
-const SYSTEM_PROMPT = `Siz O'zbekiston do'koni uchun AI yordamchisiz.
-Kassirga mahsulotlar, narxlar, sotuv haqida
-O'zbekcha qisqa va aniq javob bering.`;
+const SYSTEM_PROMPT = `Siz O'zbekiston do'koni uchun universal AI yordamchisiz. Quyidagi sohalarda yordam bera olasiz:
+
+1. MAHSULOTLAR: Narxlar, ombor qoldig'i, mahsulot ma'lumotlari
+2. SOTUV HISOBI: Kunlik/haftalik/oylik sotuv statistikasi
+3. FOYDA HISOBLASH: Tan narxi va sotish narxi orasidagi foyda, ustama foiz
+   - Misol: Tan narxi 5000 so'm, sotish narxi 8000 so'm => foyda = 3000 so'm (60%)
+4. KATEGORIYALAR: Tovar guruhlari, eng ko'p sotiladigan kategoriyalar
+5. OMBOR BOSHQARUVI: Kam qolgan tovarlar, zaxira hisobi
+6. MOLIYAVIY TAHLIL: Daromad, xarajat, sof foyda hisoblash
+7. SAVDO MASLAHAT: Qaysi tovarni ko'proq sotish, narx strategiyasi
+8. STATISTIKA: Savdo tendensiyalari, o'sish ko'rsatkichlari
+
+Barcha savollarga O'zbekcha, aniq va foydali javob bering. Markdown formatlashdan foydalaning (ro'yxatlar, **qalin**, sarlavhalar). Agar foyda yoki statistika so'ralsa, hisob-kitobni batafsil ko'rsating.`;
+
 
 export default function AIChat({ products, settings }: AIChatProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -165,7 +178,13 @@ export default function AIChat({ products, settings }: AIChatProps) {
                       className="rounded-lg mb-2 max-h-32 w-full object-cover"
                     />
                   )}
-                  <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                  {msg.role === 'ai' ? (
+                    <div className="leading-relaxed [&_strong]:font-bold [&_strong]:text-slate-900 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0.5 [&_p]:my-0.5 [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold [&_code]:bg-slate-200 [&_code]:px-1 [&_code]:rounded [&_code]:text-[10px] [&_code]:font-mono">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                  )}
                 </div>
               </div>
             ))}

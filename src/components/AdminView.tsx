@@ -102,6 +102,13 @@ export default function AdminView({
 }: AdminViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<'inventory' | 'categories' | 'settings' | 'cashiers' | 'vitrina'>('inventory');
 
+  // Custom delete-confirm modal  (never stores a function — avoids stale-closure bug)
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    message: string;
+    targetId: string;
+    type: 'product' | 'category' | 'cashier' | 'info';
+  } | null>(null);
+
   // Kasir modal states
   const [isCashierModalOpen, setIsCashierModalOpen] = useState(false);
   const [editingCashier, setEditingCashier] = useState<Cashier | null>(null);
@@ -324,6 +331,11 @@ export default function AdminView({
 
   const handleSettingsSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!/^\d{4}$/.test(settingsForm.operatorPin)) {
+      setPinChangeMessage('❌ Xato: Operator PIN aniq 4 ta raqamdan iborat bo\'lishi kerak!');
+      setTimeout(() => setPinChangeMessage(null), 4000);
+      return;
+    }
     onUpdateSettings(settingsForm);
     onUpdateStore({ ...activeStore, name: settingsForm.storeName, address: settingsForm.address, phone: settingsForm.phone });
     setPinChangeMessage('Sozlamalar zudlik bilan saqlandi!');
@@ -689,11 +701,11 @@ export default function AdminView({
                               </button>
                               
                               <button
-                                onClick={() => {
-                                  if (confirm(`Rostdan ham "${product.name}" mahsulotini o'chirib tashlamoqchimisiz?`)) {
-                                    onDeleteProduct(product.id);
-                                  }
-                                }}
+                                onClick={() => setDeleteConfirm({
+                                  message: `"${product.name}" mahsulotini o'chirishni tasdiqlaysizmi?`,
+                                  targetId: product.id,
+                                  type: 'product',
+                                })}
                                 title="O'chirish"
                                 className="p-1.5 text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 rounded-lg cursor-pointer"
                               >
@@ -739,8 +751,11 @@ export default function AdminView({
                     </div>
                     <button
                       onClick={() => {
-                        if (prodCount > 0) { alert(`Bu kategoriyada ${prodCount} ta mahsulot bor. Avval mahsulotlarni boshqa kategoriyaga o'tkazing.`); return; }
-                        if (confirm(`"${cat.name}" kategoriyasini o'chirasizmi?`)) onDeleteCategory(cat.id);
+                        if (prodCount > 0) {
+                          setDeleteConfirm({ message: `Bu kategoriyada ${prodCount} ta mahsulot bor. Avval ularni boshqa kategoriyaga ko'chiring.`, targetId: cat.id, type: 'info' });
+                          return;
+                        }
+                        setDeleteConfirm({ message: `"${cat.name}" kategoriyasini o'chirishni tasdiqlaysizmi?`, targetId: cat.id, type: 'category' });
                       }}
                       className="ml-3 shrink-0 p-2 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
                       title="O'chirish"
@@ -1087,11 +1102,11 @@ export default function AdminView({
                         {cashier.isActive ? 'Bloklash' : 'Faollashtirish'}
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm(`"${cashier.name}" kasirini o'chirishni tasdiqlaysizmi?`)) {
-                            onDeleteCashier(cashier.id);
-                          }
-                        }}
+                        onClick={() => setDeleteConfirm({
+                          message: `"${cashier.name}" kasirini o'chirishni tasdiqlaysizmi?`,
+                          targetId: cashier.id,
+                          type: 'cashier',
+                        })}
                         className="p-2 rounded-xl border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -1346,6 +1361,44 @@ export default function AdminView({
           }}
           onClose={() => setShowScanner(false)}
         />
+      )}
+
+      {/* Custom delete-confirm modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <p className="font-bold text-sm text-[#1E293B]">Tasdiqlash kerak</p>
+                <p className="text-xs text-slate-500 mt-1 leading-5">{deleteConfirm.message}</p>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 text-xs font-bold hover:bg-slate-100 cursor-pointer transition-colors"
+              >
+                Bekor qilish
+              </button>
+              {deleteConfirm.type !== 'info' && (
+                <button
+                  onClick={() => {
+                    if (deleteConfirm.type === 'product')  onDeleteProduct(deleteConfirm.targetId);
+                    if (deleteConfirm.type === 'category') onDeleteCategory(deleteConfirm.targetId);
+                    if (deleteConfirm.type === 'cashier')  onDeleteCashier(deleteConfirm.targetId);
+                    setDeleteConfirm(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold cursor-pointer transition-colors"
+                >
+                  Ha, o'chirish
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Product ADD/EDIT Modal Frame */}

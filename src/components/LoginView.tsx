@@ -31,6 +31,7 @@ export default function LoginView({ cashiers, onLoginSuccess }: LoginViewProps) 
   const [selectedCashier, setSelectedCashier] = useState<Cashier | null>(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
+  const [shake, setShake] = useState(false);
   const [success, setSuccess] = useState(false);
 
   const activeCashiers = cashiers.filter(c => c.isActive);
@@ -80,12 +81,15 @@ export default function LoginView({ cashiers, onLoginSuccess }: LoginViewProps) 
 
   useEffect(() => {
     if (!selectedCashier || pin.length !== 4) return;
-    if (pin === selectedCashier.pin) {
+    const enteredPin = String(pin).trim();
+    const savedPin   = String(selectedCashier.pin ?? '').trim();
+    if (savedPin.length === 4 && enteredPin === savedPin) {
       setSuccess(true);
       setTimeout(() => onLoginSuccess(selectedCashier), 500);
     } else {
       setError(true);
-      setTimeout(() => { setPin(''); setError(false); }, 650);
+      setShake(true);
+      setTimeout(() => { setPin(''); setError(false); setShake(false); }, 650);
     }
   }, [pin, selectedCashier]);
 
@@ -201,18 +205,31 @@ export default function LoginView({ cashiers, onLoginSuccess }: LoginViewProps) 
 
   return (
     <div style={bgStyle}>
+      <style>{`
+        @keyframes shake {
+          0%,100% { transform: translateX(0); }
+          20%      { transform: translateX(-8px); }
+          40%      { transform: translateX(8px); }
+          60%      { transform: translateX(-6px); }
+          80%      { transform: translateX(6px); }
+        }
+        .pin-shake { animation: shake 0.45s ease; }
+      `}</style>
 
-      <div style={{
-        background:'white',
-        width:'100%', maxWidth:'380px',
-        borderRadius:'28px',
-        padding:'32px',
-        boxShadow:'0 20px 60px rgba(0,0,0,0.4)',
-        border: error ? '2px solid #f87171' : success ? '2px solid #4ade80' : '2px solid rgba(255,255,255,0.1)',
-        display:'flex', flexDirection:'column', alignItems:'center',
-        position:'relative', zIndex:1,
-        transition:'border-color 0.2s',
-      }}>
+      <div
+        className={shake ? 'pin-shake' : ''}
+        style={{
+          background:'white',
+          width:'100%', maxWidth:'380px',
+          borderRadius:'28px',
+          padding:'32px',
+          boxShadow:'0 20px 60px rgba(0,0,0,0.4)',
+          border: error ? '2px solid #f87171' : success ? '2px solid #4ade80' : '2px solid rgba(255,255,255,0.1)',
+          display:'flex', flexDirection:'column', alignItems:'center',
+          position:'relative', zIndex:1,
+          transition:'border-color 0.2s',
+        }}
+      >
         {/* Orqaga tugma */}
         <button
           onClick={handleBack}
