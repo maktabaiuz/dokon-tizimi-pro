@@ -1,21 +1,22 @@
 import { Product, Category, StoreSettings, Debt, Sale, Cashier } from './types';
 
 export const INITIAL_CATEGORIES: Category[] = [
-  { id: 'all',       name: 'Barchasi',                icon: 'LayoutGrid' },
-  { id: 'food',      name: 'Oziq-ovqat',              icon: 'Apple' },
-  { id: 'furniture', name: 'Uy jihozlari',            icon: 'Sofa' },
-  { id: 'dishes',    name: 'Idish-tovoqlar',          icon: 'UtensilsCrossed' },
-  { id: 'cleaning',  name: 'Uy tozalashga buyimlar',  icon: 'Sparkles' },
-  { id: 'water',     name: 'Suv',                     icon: 'Droplets' },
-  { id: 'cosmetics', name: 'Kosmetika',               icon: 'Smile' },
-  { id: 'perfume',   name: 'Parfyumeriya',            icon: 'Wind' },
+  { id: 'all',          name: 'Barchasi',                icon: 'LayoutGrid' },
+  { id: 'food',         name: 'Oziq-ovqat',              icon: 'Apple' },
+  { id: 'ichimliklar',  name: 'Ichimliklar',             icon: 'CupSoda' },
+  { id: 'furniture',    name: 'Uy jihozlari',            icon: 'Sofa' },
+  { id: 'dishes',       name: 'Idish-tovoqlar',          icon: 'UtensilsCrossed' },
+  { id: 'cleaning',     name: 'Uy tozalashga buyimlar',  icon: 'Sparkles' },
+  { id: 'water',        name: 'Suv',                     icon: 'Droplets' },
+  { id: 'cosmetics',    name: 'Kosmetika',               icon: 'Smile' },
+  { id: 'perfume',      name: 'Parfyumeriya',            icon: 'Wind' },
 ];
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'prod-1',
     name: 'Coca-Cola 0.5L',
-    category: 'water',
+    category: 'ichimliklar',
     costPrice: 6000,
     price: 8000,
     stock: 3,
@@ -31,7 +32,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'prod-2',
     name: 'Sut Siyamo 1L',
-    category: 'water',
+    category: 'ichimliklar',
     costPrice: 10000,
     price: 12500,
     stock: 22,
@@ -85,7 +86,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'prod-6',
     name: 'Choy Greenfield',
-    category: 'water',
+    category: 'ichimliklar',
     costPrice: 17500,
     price: 22000,
     stock: 15,

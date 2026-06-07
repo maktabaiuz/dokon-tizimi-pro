@@ -57,7 +57,7 @@ export default function QRPaymentModal({ isOpen, amount, storeName, onClose, onC
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
       <div className="bg-white w-full max-w-md rounded-t-[24px] sm:rounded-[24px] p-6" onClick={e => e.stopPropagation()}>
 
         <div className="w-9 h-1 bg-slate-200 rounded-full mx-auto mb-5" />
@@ -99,14 +99,19 @@ export default function QRPaymentModal({ isOpen, amount, storeName, onClose, onC
           </div>
         )}
 
+        {!selected && (
+          <p className="text-center text-xs text-amber-600 font-semibold mb-2">
+            ↑ Avval to'lov tizimini tanlang
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <button onClick={onClose}
             className="py-3 rounded-xl border border-[#E2E8F0] text-[#64748B] font-medium text-sm cursor-pointer hover:bg-slate-50">
             Bekor qilish
           </button>
           <button onClick={onConfirm} disabled={!selected}
-            className={`py-3 rounded-xl font-semibold text-sm text-white cursor-pointer flex items-center justify-center gap-2 transition-all ${
-              selected ? 'bg-[#16A34A] hover:bg-green-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+            className={`py-3 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all ${
+              selected ? 'bg-[#16A34A] hover:bg-green-700 cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
             }`}>
             <CheckCircle className="w-4 h-4" /> To'landi ✓
           </button>

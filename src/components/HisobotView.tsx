@@ -59,6 +59,7 @@ export default function HisobotView({
 
   // Return sale states
   const [viewingReceipt, setViewingReceipt] = useState<Sale | null>(null);
+  const [returnConfirm, setReturnConfirm] = useState<Sale | null>(null);
 
   // Smena yopish modal
   const [showCloseShiftModal, setShowCloseShiftModal] = useState(false);
@@ -624,12 +625,7 @@ export default function HisobotView({
 
                         {/* VOZVRAT action */}
                         <button
-                          onClick={() => {
-                            if (confirm(`Haqiqatan ham "${sale.id}" chekiga tegishli savdodan vozvrat qilmoqchimisiz? Tovarlar zaxiraga qayta tiklanadi va moliya qaytariladi!`)) {
-                              onReturnSale(sale.id);
-                              alert("Savdo bekor qilindi, tovarlar zaxiraga qaytarildi.");
-                            }
-                          }}
+                          onClick={() => setReturnConfirm(sale)}
                           className="p-1.5 text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 rounded-lg cursor-pointer shrink-0"
                           title="Qaytarish (Vozvrat)"
                         >
@@ -830,7 +826,46 @@ export default function HisobotView({
           </div>
         </div>
       )}
-      
+
+      {/* QAYTARISH TASDIQLASH MODALI */}
+      {returnConfirm && (
+        <div className="fixed inset-0 z-[150] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <RotateCcw className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <p className="font-bold text-sm text-[#1E293B]">Savdoni qaytarish (Vozvrat)</p>
+                <p className="text-xs text-slate-500 mt-1 leading-5">
+                  <span className="font-bold text-slate-700">{returnConfirm.id}</span> — {returnConfirm.totalAmount.toLocaleString()} UZS
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5 leading-5">
+                  Tovarlar zaxiraga qaytariladi. Bu amalni ortga qaytarib bo'lmaydi!
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setReturnConfirm(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 text-xs font-bold hover:bg-slate-100 cursor-pointer transition-colors"
+              >
+                Bekor qilish
+              </button>
+              <button
+                onClick={() => {
+                  onReturnSale(returnConfirm.id);
+                  setReturnConfirm(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold cursor-pointer transition-colors"
+              >
+                Ha, qaytarish
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

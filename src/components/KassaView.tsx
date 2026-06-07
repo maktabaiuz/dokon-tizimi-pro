@@ -108,7 +108,19 @@ export default function KassaView({
   // Automatically add item if barcode is fully scanned/matched
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      const match = products.find(p => p.barcode === searchQuery || p.name.toLowerCase() === searchQuery.toLowerCase());
+      const trimmed = searchQuery.trim();
+      if (!trimmed) return;
+
+      // Priority 1: exact barcode (scanner)
+      let match = products.find(p => p.barcode === trimmed);
+      // Priority 2: exact name (case-insensitive)
+      if (!match) match = products.find(p => p.name.toLowerCase() === trimmed.toLowerCase());
+      // Priority 3: partial name — only if exactly one product matches
+      if (!match) {
+        const partials = products.filter(p => p.name.toLowerCase().includes(trimmed.toLowerCase()));
+        if (partials.length === 1) match = partials[0];
+      }
+
       if (match) {
         if (match.stock > 0) {
           onAddToCart(match);
@@ -120,7 +132,7 @@ export default function KassaView({
           setTimeout(() => setPromoMessage(null), 3500);
         }
       } else {
-        setPromoMessage({ text: "Mahsulot topilmadi!", isError: true });
+        setPromoMessage({ text: "Mahsulot topilmadi! Ro'yxatdan tanlang.", isError: true });
         setTimeout(() => setPromoMessage(null), 3000);
       }
     }
@@ -227,6 +239,7 @@ export default function KassaView({
     setPromoCode('');
     setAppliedDiscount(0);
     setPromoMessage(null);
+    setPaymentMethod('Naqd');
   };
 
   // Quick ticker warnings (extremely matching layout)
@@ -529,7 +542,11 @@ export default function KassaView({
             </h2>
             {cart.length > 0 && (
               <button
-                onClick={onClearCart}
+                onClick={() => {
+                  if (window.confirm(`Savatdagi ${totalItemsCount} ta mahsulotni o'chirasizmi?`)) {
+                    onClearCart();
+                  }
+                }}
                 className="text-red-600 hover:text-red-700 hover:bg-red-50 px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" />

@@ -27,6 +27,10 @@ function getInitials(name: string) {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
+function fmtStore(label: string): string {
+  return /^\d+$/.test(label.trim()) ? `Do'kon ${label.trim()}` : label;
+}
+
 export default function LoginView({ cashiers, onLoginSuccess }: LoginViewProps) {
   const [selectedCashier, setSelectedCashier] = useState<Cashier | null>(null);
   const [pin, setPin] = useState('');
@@ -175,7 +179,7 @@ export default function LoginView({ cashiers, onLoginSuccess }: LoginViewProps) 
                   </div>
                   <div style={{ textAlign:'center' }}>
                     <p style={{ fontWeight:700, fontSize:'12px', color:'#1E293B', margin:0 }}>{cashier.name}</p>
-                    <p style={{ fontSize:'10px', color:'#64748B', marginTop:'2px' }}>{cashier.storeLabel}</p>
+                    <p style={{ fontSize:'10px', color:'#64748B', marginTop:'2px' }}>{fmtStore(cashier.storeLabel)}</p>
                     {cashier.role === 'owner' && (
                       <span style={{
                         marginTop:'6px', display:'inline-flex', alignItems:'center', gap:'3px',
@@ -252,7 +256,7 @@ export default function LoginView({ cashiers, onLoginSuccess }: LoginViewProps) 
           {getInitials(selectedCashier.name)}
         </div>
         <p style={{ fontWeight:900, color:'#1E293B', fontSize:'15px', margin:0 }}>{selectedCashier.name}</p>
-        <p style={{ fontSize:'12px', color:'#64748B', marginTop:'2px' }}>{selectedCashier.storeLabel}</p>
+        <p style={{ fontSize:'12px', color:'#64748B', marginTop:'2px' }}>{fmtStore(selectedCashier.storeLabel)}</p>
 
         <p style={{
           fontSize:'12px', marginTop:'12px', marginBottom:'24px', fontWeight:600,

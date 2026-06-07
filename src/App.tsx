@@ -13,6 +13,8 @@ import {
   Check,
 } from 'lucide-react';
 import { Product, Category, CartItem, Debt, Sale, ActiveShift, StoreSettings, Cashier, Store as StoreType } from './types';
+
+const fmtStore = (label: string) => /^\d+$/.test(label.trim()) ? `Do'kon ${label.trim()}` : label;
 import { loadCashiers, saveCashiers, loadStores, saveStores, loadActiveStoreId, saveActiveStoreId, loadStoreData, saveStoreData } from './utils/storage';
 import {
   INITIAL_PRODUCTS,
@@ -145,7 +147,7 @@ export default function App() {
   // Store management — derived from cashiers
   const activeCashierEntry = cashiers.find(c => c.id === activeStoreId);
   const activeStore: StoreType = activeCashierEntry
-    ? { id: activeStoreId, name: activeCashierEntry.storeLabel, address: settings.address, phone: settings.phone }
+    ? { id: activeStoreId, name: fmtStore(activeCashierEntry.storeLabel), address: settings.address, phone: settings.phone }
     : (stores.find(s => s.id === activeStoreId) ?? { id: activeStoreId, name: settings.storeName, address: settings.address, phone: settings.phone });
 
   const handleChangeStore = (newStoreId: string) => {
@@ -421,7 +423,7 @@ export default function App() {
                       >
                         <Check className={`w-3.5 h-3.5 shrink-0 ${cashier.id === activeStoreId ? 'opacity-100' : 'opacity-0'}`} />
                         <div className="min-w-0">
-                          <p className="truncate font-bold">{cashier.storeLabel}</p>
+                          <p className="truncate font-bold">{fmtStore(cashier.storeLabel)}</p>
                           <p className="text-[10px] text-slate-400 font-medium truncate">{cashier.name}</p>
                         </div>
                       </button>
@@ -464,7 +466,22 @@ export default function App() {
 
             {isOwner && (
               <button
+                onClick={() => setActiveTab('kassa')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  activeTab === 'kassa'
+                    ? 'bg-[#2563eb]/10 text-[#2563eb]'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <ShoppingBag className="w-4 h-4" />
+                <span className="hidden sm:inline">Kassa</span>
+              </button>
+            )}
+
+            {isOwner && (
+              <button
                 onClick={() => setActiveTab('admin')}
+                title={activeTab === 'admin' ? "Siz allaqachon Admin panelidasiz" : "Boshqaruv paneli"}
                 className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
                   activeTab === 'admin'
                     ? 'bg-[#2563eb]/10 text-[#2563eb]'

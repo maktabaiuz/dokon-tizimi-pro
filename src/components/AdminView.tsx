@@ -61,6 +61,8 @@ import {
   Camera
 } from 'lucide-react';
 import { Product, Category, StoreSettings, Cashier, Store as StoreData } from '../types';
+
+const fmtStore = (label: string) => /^\d+$/.test(label.trim()) ? `Do'kon ${label.trim()}` : label;
 import { exportAllData, importAllData } from '../utils/storage';
 import * as Icons from 'lucide-react';
 import BarcodeScanner from './BarcodeScanner';
@@ -115,6 +117,7 @@ export default function AdminView({
   const [cashierForm, setCashierForm] = useState<Omit<Cashier, 'id'>>({
     name: '', pin: '', storeLabel: '', role: 'cashier', isActive: true,
   });
+  const [cashierFormError, setCashierFormError] = useState<string>('');
   
   const [searchQuery, setSearchQuery] = useState<string>('');
   
@@ -144,6 +147,7 @@ export default function AdminView({
   // Category inline form states
   const [newCatName, setNewCatName] = useState<string>('');
   const [newCatIcon, setNewCatIcon] = useState<string>('Package');
+  const [catError, setCatError] = useState<string>('');
 
   // Backup logs presentation modal
   const [isBackupModalOpen, setIsBackupModalOpen] = useState<boolean>(false);
@@ -344,7 +348,11 @@ export default function AdminView({
 
   const handleCategorySubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCatName.trim()) return;
+    if (!newCatName.trim() || newCatName.trim().length < 2) {
+      setCatError("Kategoriya nomini kiriting! (kamida 2 ta harf)");
+      return;
+    }
+    setCatError('');
     onAddCategory({ name: newCatName.trim(), icon: newCatIcon });
     setNewCatName('');
     setNewCatIcon('Package');
@@ -778,12 +786,12 @@ export default function AdminView({
                   <label className="text-xs font-bold text-[#64748B] block">Kategoriya nomi</label>
                   <input
                     type="text"
-                    required
                     value={newCatName}
-                    onChange={(e) => setNewCatName(e.target.value)}
+                    onChange={(e) => { setNewCatName(e.target.value); setCatError(''); }}
                     placeholder="Misol, Sabzavotlar..."
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-[#E2E8F0] rounded-xl font-semibold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs"
+                    className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl font-semibold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs ${catError ? 'border-red-400' : 'border-[#E2E8F0]'}`}
                   />
+                  {catError && <p className="text-[10px] text-red-500 font-semibold mt-0.5">{catError}</p>}
                 </div>
                 <button
                   type="submit"
@@ -1037,6 +1045,7 @@ export default function AdminView({
                 onClick={() => {
                   setEditingCashier(null);
                   setCashierForm({ name: '', pin: '', storeLabel: '', role: 'cashier', isActive: true });
+                  setCashierFormError('');
                   setIsCashierModalOpen(true);
                 }}
                 className="bg-[#2563eb] hover:bg-[#004ac6] active:scale-95 text-white px-5 py-3 rounded-xl text-sm font-bold flex items-center gap-2 cursor-pointer transition-all shadow-md select-none shrink-0"
@@ -1075,7 +1084,7 @@ export default function AdminView({
                             <span className="text-[9px] font-black bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full shrink-0">Nofaol</span>
                           )}
                         </div>
-                        <p className="text-xs text-[#64748B] mt-0.5">{cashier.storeLabel}</p>
+                        <p className="text-xs text-[#64748B] mt-0.5">{fmtStore(cashier.storeLabel)}</p>
                         <p className="text-[10px] text-slate-400 font-mono mt-0.5">PIN: {'•'.repeat(cashier.pin.length)}</p>
                       </div>
                     </div>
@@ -1085,6 +1094,7 @@ export default function AdminView({
                         onClick={() => {
                           setEditingCashier(cashier);
                           setCashierForm({ name: cashier.name, pin: cashier.pin, storeLabel: cashier.storeLabel, role: cashier.role, isActive: cashier.isActive });
+                          setCashierFormError('');
                           setIsCashierModalOpen(true);
                         }}
                         className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border border-[#dee8ff] bg-[#f0f3ff] text-[#2563eb] text-xs font-bold hover:bg-[#dee8ff] cursor-pointer transition-colors"
@@ -1171,10 +1181,10 @@ export default function AdminView({
                       </div>
 
                       {/* Product image/icon */}
-                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center shrink-0">
+                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center shrink-0 text-slate-500">
                         {product.image
                           ? <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
-                          : <span className="text-2xl">{product.icon || '📦'}</span>
+                          : renderIcon(product.icon || 'Package', 'w-6 h-6')
                         }
                       </div>
 
@@ -1253,7 +1263,10 @@ export default function AdminView({
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                if (cashierForm.pin.length !== 4) { alert('PIN aniq 4 raqamdan iborat bo\'lishi kerak!'); return; }
+                if (!cashierForm.name.trim()) { setCashierFormError("Kasir ismini kiriting!"); return; }
+                if (!cashierForm.storeLabel.trim()) { setCashierFormError("Do'kon/Filial nomini kiriting!"); return; }
+                if (cashierForm.pin.length !== 4) { setCashierFormError("PIN aniq 4 raqamdan iborat bo'lishi kerak!"); return; }
+                setCashierFormError('');
                 if (editingCashier) {
                   onUpdateCashier({ ...editingCashier, ...cashierForm });
                 } else {
@@ -1263,13 +1276,17 @@ export default function AdminView({
               }}
               className="p-6 space-y-4"
             >
+              {cashierFormError && (
+                <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-xl text-xs font-semibold text-red-600">
+                  {cashierFormError}
+                </div>
+              )}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-[#64748B]">Kasir ismi</label>
                 <input
                   type="text"
-                  required
                   value={cashierForm.name}
-                  onChange={e => setCashierForm({ ...cashierForm, name: e.target.value })}
+                  onChange={e => { setCashierForm({ ...cashierForm, name: e.target.value }); setCashierFormError(''); }}
                   placeholder="Asadbek Toshmatov..."
                   className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-semibold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs"
                 />
@@ -1280,9 +1297,8 @@ export default function AdminView({
                   <label className="text-xs font-bold text-[#64748B]">Do'kon / Filial</label>
                   <input
                     type="text"
-                    required
                     value={cashierForm.storeLabel}
-                    onChange={e => setCashierForm({ ...cashierForm, storeLabel: e.target.value })}
+                    onChange={e => { setCashierForm({ ...cashierForm, storeLabel: e.target.value }); setCashierFormError(''); }}
                     placeholder="1-Do'kon..."
                     className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-semibold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs"
                   />
