@@ -36,34 +36,37 @@ function drawEAN13(canvas: HTMLCanvasElement, raw: string) {
   ctx.fillText(digits.slice(1, 7).join(''), pad + 21 * bw, bh + 16);
   ctx.fillText(digits.slice(7).join(''),   pad + (21 + 5 + 21) * bw / 2 + 21 * bw, bh + 16);
 }
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  Download, 
-  Edit3, 
-  Trash2, 
-  PlusCircle, 
-  Store, 
-  Phone, 
-  FileText, 
-  MapPin, 
-  Lock, 
-  Printer, 
-  UploadCloud, 
-  FileSpreadsheet, 
+import {
+  Plus,
+  Search,
+  Filter,
+  Download,
+  Edit3,
+  Trash2,
+  PlusCircle,
+  Store,
+  Phone,
+  FileText,
+  MapPin,
+  Lock,
+  Printer,
+  UploadCloud,
+  FileSpreadsheet,
   AlertTriangle,
   FolderOpen,
   Info,
   X,
   PlusSquare,
   FileJson,
-  Camera
+  Camera,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { Product, Category, StoreSettings, Cashier, Store as StoreData } from '../types';
 
-const fmtStore = (label: string) => /^\d+$/.test(label.trim()) ? `Do'kon ${label.trim()}` : label;
 import { exportAllData, importAllData } from '../utils/storage';
+import { fmtStore } from '../utils/format';
+import { generateSalt, hashPin } from '../utils/crypto';
 import * as Icons from 'lucide-react';
 import BarcodeScanner from './BarcodeScanner';
 
@@ -148,6 +151,10 @@ export default function AdminView({
   const [newCatName, setNewCatName] = useState<string>('');
   const [newCatIcon, setNewCatIcon] = useState<string>('Package');
   const [catError, setCatError] = useState<string>('');
+
+  // PIN ko'rish toggle (settings va kasir modal uchun)
+  const [showPinSettings, setShowPinSettings] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
 
   // Backup logs presentation modal
   const [isBackupModalOpen, setIsBackupModalOpen] = useState<boolean>(false);
@@ -935,17 +942,27 @@ export default function AdminView({
                   <div className="space-y-3">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-[#64748B] block">To&apos;rtta raqamli bosh klyuch</label>
-                      <input
-                        type="text"
-                        maxLength={4}
-                        value={settingsForm.operatorPin}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/\D/g, ''); // digit only
-                          setSettingsForm({ ...settingsForm, operatorPin: val });
-                        }}
-                        placeholder="Kalit PIN (e.g., 1234)"
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-bold font-mono focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-base tracking-widest text-[#1E293B]"
-                      />
+                      <div className="relative">
+                        <input
+                          type={showPinSettings ? 'text' : 'password'}
+                          maxLength={4}
+                          value={settingsForm.operatorPin}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, '');
+                            setSettingsForm({ ...settingsForm, operatorPin: val });
+                          }}
+                          placeholder="Kalit PIN (e.g., 1234)"
+                          className="w-full px-4 py-2.5 pr-10 bg-slate-50 border border-[#CBD5E1] rounded-xl font-bold font-mono focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-base tracking-widest text-[#1E293B]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPinSettings(v => !v)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                          tabIndex={-1}
+                        >
+                          {showPinSettings ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -1193,11 +1210,6 @@ export default function AdminView({
                         <p className="font-bold text-sm text-[#1E293B] truncate">{product.name}</p>
                         <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                           <span className="text-xs text-[#64748B]">{product.price.toLocaleString()} so'm</span>
-                          {product.discount && product.discount > 0 && (
-                            <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
-                              -{product.discount}% aksiya
-                            </span>
-                          )}
                           {(product.soldCount || 0) > 0 && (
                             <span className="text-[10px] text-slate-400">🔥 {product.soldCount} ta sotilgan</span>
                           )}
@@ -1306,15 +1318,25 @@ export default function AdminView({
 
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-[#64748B]">PIN-kod (4 raqam)</label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={4}
-                    value={cashierForm.pin}
-                    onChange={e => setCashierForm({ ...cashierForm, pin: e.target.value.replace(/\D/g, '') })}
-                    placeholder="1234"
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-bold font-mono tracking-widest focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-base text-center"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPinModal ? 'text' : 'password'}
+                      required
+                      maxLength={4}
+                      value={cashierForm.pin}
+                      onChange={e => { setCashierForm({ ...cashierForm, pin: e.target.value.replace(/\D/g, '') }); setCashierFormError(''); }}
+                      placeholder="••••"
+                      className="w-full px-4 py-2.5 pr-10 bg-slate-50 border border-[#CBD5E1] rounded-xl font-bold font-mono tracking-widest focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-base text-center"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPinModal(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      tabIndex={-1}
+                    >
+                      {showPinModal ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
               </div>
 

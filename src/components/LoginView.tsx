@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Delete, ArrowLeft, ShieldCheck } from 'lucide-react';
 import { Cashier } from '../types';
+import { verifyPin } from '../utils/crypto';
+import { fmtStore } from '../utils/format';
 
 interface LoginViewProps {
   cashiers: Cashier[];
@@ -27,33 +29,50 @@ function getInitials(name: string) {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
-function fmtStore(label: string): string {
-  return /^\d+$/.test(label.trim()) ? `Do'kon ${label.trim()}` : label;
-}
-
 export default function LoginView({ cashiers, onLoginSuccess }: LoginViewProps) {
   const [selectedCashier, setSelectedCashier] = useState<Cashier | null>(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
   const [shake, setShake] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [failCount, setFailCount] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [countdown, setCountdown] = useState(0);
 
   const activeCashiers = cashiers.filter(c => c.isActive);
 
+  const isLocked = lockedUntil !== null && Date.now() < lockedUntil;
+
+  // Countdown ticker while locked
+  useEffect(() => {
+    if (!lockedUntil) return;
+    const id = setInterval(() => {
+      const remaining = Math.ceil((lockedUntil - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setLockedUntil(null);
+        setCountdown(0);
+        setFailCount(0);
+      } else {
+        setCountdown(remaining);
+      }
+    }, 500);
+    return () => clearInterval(id);
+  }, [lockedUntil]);
+
   const handleKeyPress = (num: string) => {
-    if (success || pin.length >= 4) return;
+    if (success || pin.length >= 4 || isLocked) return;
     setError(false);
     setPin(prev => prev + num);
   };
 
   const handleBackspace = () => {
-    if (success) return;
+    if (success || isLocked) return;
     setError(false);
     setPin(prev => prev.slice(0, -1));
   };
 
   const handleClear = () => {
-    if (success) return;
+    if (success || isLocked) return;
     setPin('');
     setError(false);
   };
@@ -63,6 +82,9 @@ export default function LoginView({ cashiers, onLoginSuccess }: LoginViewProps) 
     setPin('');
     setError(false);
     setSuccess(false);
+    setFailCount(0);
+    setLockedUntil(null);
+    setCountdown(0);
   };
 
   const handleBack = () => {
@@ -70,6 +92,9 @@ export default function LoginView({ cashiers, onLoginSuccess }: LoginViewProps) 
     setPin('');
     setError(false);
     setSuccess(false);
+    setFailCount(0);
+    setLockedUntil(null);
+    setCountdown(0);
   };
 
   useEffect(() => {
@@ -85,17 +110,31 @@ export default function LoginView({ cashiers, onLoginSuccess }: LoginViewProps) 
 
   useEffect(() => {
     if (!selectedCashier || pin.length !== 4) return;
-    const enteredPin = String(pin).trim();
-    const savedPin   = String(selectedCashier.pin ?? '').trim();
-    if (savedPin.length === 4 && enteredPin === savedPin) {
-      setSuccess(true);
-      setTimeout(() => onLoginSuccess(selectedCashier), 500);
-    } else {
-      setError(true);
-      setShake(true);
-      setTimeout(() => { setPin(''); setError(false); setShake(false); }, 650);
-    }
-  }, [pin, selectedCashier]);
+    if (lockedUntil !== null && Date.now() < lockedUntil) { setPin(''); return; }
+
+    (async () => {
+      let ok: boolean;
+      if (selectedCashier.pinHash && selectedCashier.pinSalt) {
+        ok = await verifyPin(pin, selectedCashier.pinHash, selectedCashier.pinSalt);
+      } else {
+        ok = pin.trim() === String(selectedCashier.pin ?? '').trim();
+      }
+
+      if (ok) {
+        setSuccess(true);
+        setTimeout(() => onLoginSuccess(selectedCashier), 500);
+      } else {
+        setFailCount(prev => {
+          const next = prev + 1;
+          if (next >= 3) setLockedUntil(Date.now() + 30000);
+          return next;
+        });
+        setError(true);
+        setShake(true);
+        setTimeout(() => { setPin(''); setError(false); setShake(false); }, 650);
+      }
+    })();
+  }, [pin, selectedCashier, lockedUntil]);
 
   const bgStyle: React.CSSProperties = {
     minHeight: '100vh',
@@ -262,7 +301,16 @@ export default function LoginView({ cashiers, onLoginSuccess }: LoginViewProps) 
           fontSize:'12px', marginTop:'12px', marginBottom:'24px', fontWeight:600,
           color: success ? '#16a34a' : error ? '#ef4444' : '#94A3B8',
         }}>
-          {success ? 'Kirish muvaffaqiyatli!' : error ? 'Xato PIN-kod! Qayta urinib ko\'ring' : 'PIN-kodingizni kiriting'}
+          {success
+            ? 'Kirish muvaffaqiyatli!'
+            : isLocked
+              ? `Bloklandi! ${countdown}s — Ko'p noto'g'ri urinish`
+              : error
+                ? `Xato PIN! ${3 - failCount} urinish qoldi`
+                : failCount > 0
+                  ? `Xato PIN! ${3 - failCount} urinish qoldi`
+                  : 'PIN-kodingizni kiriting'
+          }
         </p>
 
         {/* PIN nuqtalar */}

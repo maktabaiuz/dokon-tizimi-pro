@@ -109,11 +109,29 @@ export function exportAllData(): string {
 export function importAllData(jsonString: string): boolean {
   try {
     const data = JSON.parse(jsonString);
-    if (data.products) localStorage.setItem(KEYS.products, data.products);
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) return false;
+
+    const isValidJson = (raw: unknown, expectArray: boolean): boolean => {
+      if (typeof raw !== 'string') return false;
+      try {
+        const parsed = JSON.parse(raw);
+        return expectArray
+          ? Array.isArray(parsed)
+          : typeof parsed === 'object' && !Array.isArray(parsed) && parsed !== null;
+      } catch { return false; }
+    };
+
+    if (data.products   !== undefined && !isValidJson(data.products, true))   return false;
+    if (data.categories !== undefined && !isValidJson(data.categories, true))  return false;
+    if (data.sales      !== undefined && !isValidJson(data.sales, true))       return false;
+    if (data.debts      !== undefined && !isValidJson(data.debts, true))       return false;
+    if (data.settings   !== undefined && !isValidJson(data.settings, false))   return false;
+
+    if (data.products)   localStorage.setItem(KEYS.products, data.products);
     if (data.categories) localStorage.setItem(KEYS.categories, data.categories);
-    if (data.sales) localStorage.setItem(KEYS.sales, data.sales);
-    if (data.debts) localStorage.setItem(KEYS.debts, data.debts);
-    if (data.settings) localStorage.setItem(KEYS.settings, data.settings);
+    if (data.sales)      localStorage.setItem(KEYS.sales, data.sales);
+    if (data.debts)      localStorage.setItem(KEYS.debts, data.debts);
+    if (data.settings)   localStorage.setItem(KEYS.settings, data.settings);
     return true;
   } catch { return false; }
 }

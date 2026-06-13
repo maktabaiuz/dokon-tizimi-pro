@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import BarcodeScanner from './BarcodeScanner';
 import {
   Search,
@@ -7,7 +7,6 @@ import {
   Plus,
   Minus,
   Scan,
-  Tag,
   CreditCard,
   Coins,
   BookOpen,
@@ -62,9 +61,10 @@ export default function KassaView({
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showScanner, setShowScanner] = useState(false);
-  const [promoCode, setPromoCode] = useState<string>('');
-  const [appliedDiscount, setAppliedDiscount] = useState<number>(0);
-  const [promoMessage, setPromoMessage] = useState<{ text: string; isError: boolean } | null>(null);
+  const [scanMessage, setScanMessage] = useState<{ text: string; isError: boolean } | null>(null);
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   // Checkout modal states
   const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
@@ -105,65 +105,92 @@ export default function KassaView({
       .map(p => p.id)
   );
 
-  // Automatically add item if barcode is fully scanned/matched
+  // Debounce: yozish paytida real-time qidiruv (300ms)
+  useEffect(() => {
+    if (searchQuery.length < 2) { setSearchResults([]); return; }
+    const timer = setTimeout(() => {
+      const results = products.filter(p =>
+        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.barcode.includes(searchQuery)
+      );
+      setSearchResults(results);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, products]);
+
+  // Outside click — dropdownni yopish
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node))
+        setSearchResults([]);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Enter yoki "Qidiruv" bosilganda
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       const trimmed = searchQuery.trim();
       if (!trimmed) return;
 
-      // Priority 1: exact barcode (scanner)
-      let match = products.find(p => p.barcode === trimmed);
-      // Priority 2: exact name (case-insensitive)
-      if (!match) match = products.find(p => p.name.toLowerCase() === trimmed.toLowerCase());
-      // Priority 3: partial name — only if exactly one product matches
-      if (!match) {
-        const partials = products.filter(p => p.name.toLowerCase().includes(trimmed.toLowerCase()));
-        if (partials.length === 1) match = partials[0];
+      // Faqat aniq barcode bo'lsa — to'g'ridan savatga (skaner uchun)
+      const exactBarcode = products.find(p => p.barcode === trimmed);
+      if (exactBarcode) {
+        if (exactBarcode.stock > 0) {
+          handleAddToCartSafe(exactBarcode);
+          setSearchQuery('');
+          setSearchResults([]);
+          setScanMessage({ text: `"${exactBarcode.name}" savatga qo'shildi`, isError: false });
+          setTimeout(() => setScanMessage(null), 3000);
+        } else {
+          setScanMessage({ text: `Xato: "${exactBarcode.name}" omborda qolmagan!`, isError: true });
+          setTimeout(() => setScanMessage(null), 3000);
+        }
+        return;
       }
 
-      if (match) {
-        if (match.stock > 0) {
-          onAddToCart(match);
-          setSearchQuery('');
-          setPromoMessage({ text: `"${match.name}" savatga qo'shildi`, isError: false });
-          setTimeout(() => setPromoMessage(null), 3500);
-        } else {
-          setPromoMessage({ text: `Xato: "${match.name}" omborda qolmagan!`, isError: true });
-          setTimeout(() => setPromoMessage(null), 3500);
-        }
+      // Aks holda — natijalarni dropdown'da ko'rsat
+      const results = products.filter(p =>
+        p.name.toLowerCase().includes(trimmed.toLowerCase()) ||
+        p.barcode.includes(trimmed)
+      );
+      if (results.length === 0) {
+        setScanMessage({ text: "Mahsulot topilmadi!", isError: true });
+        setTimeout(() => setScanMessage(null), 3000);
       } else {
-        setPromoMessage({ text: "Mahsulot topilmadi! Ro'yxatdan tanlang.", isError: true });
-        setTimeout(() => setPromoMessage(null), 3000);
+        setSearchResults(results);
       }
     }
   };
 
-  // Promo code discounts
-  const handleApplyPromo = () => {
-    const code = promoCode.trim().toUpperCase();
-    if (code === 'PRO5') {
-      setAppliedDiscount(5);
-      setPromoMessage({ text: '5% lik chegirma muvaffaqiyatli qo\'shildi!', isError: false });
-    } else if (code === 'AISTUDIO') {
-      setAppliedDiscount(15);
-      setPromoMessage({ text: '15% lik maxsus chegirma qo\'shildi!', isError: false });
-    } else if (code === 'CHEMPI') {
-      setAppliedDiscount(20);
-      setPromoMessage({ text: '20% Chempionlar chegirmasi qo\'shildi!', isError: false });
-    } else if (code === '') {
-      setAppliedDiscount(0);
-      setPromoMessage(null);
-    } else {
-      setAppliedDiscount(0);
-      setPromoMessage({ text: 'Xato kelishuv kodi!', isError: true });
+  const handleAddToCartSafe = (product: Product) => {
+    const existing = cart.find(item => item.product.id === product.id);
+    if (existing && existing.quantity >= product.stock) {
+      setScanMessage({ text: `"${product.name}" omborda ko'pi yo'q! Mavjud: ${product.stock} ta`, isError: true });
+      setTimeout(() => setScanMessage(null), 3000);
+      return;
     }
+    onAddToCart(product);
+  };
+
+  const handleSelectFromDropdown = (product: Product) => {
+    if (product.stock > 0) {
+      handleAddToCartSafe(product);
+      setScanMessage({ text: `"${product.name}" savatga qo'shildi`, isError: false });
+      setTimeout(() => setScanMessage(null), 3000);
+    } else {
+      setScanMessage({ text: `"${product.name}" omborda qolmagan!`, isError: true });
+      setTimeout(() => setScanMessage(null), 3000);
+    }
+    setSearchQuery('');
+    setSearchResults([]);
   };
 
   // Cart math calculations
   const totalItemsCount = cart.reduce((acc, item) => acc + item.quantity, 0);
   const subtotal = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
-  const discountAmount = Math.round((subtotal * appliedDiscount) / 100);
-  const totalAmount = subtotal - discountAmount;
+  const totalAmount = subtotal;
 
   // Change calculator
   const parsedCash = parseFloat(cashReceived) || 0;
@@ -183,7 +210,7 @@ export default function KassaView({
       })),
       paymentMethod: 'QR',
       customerName: customerName.trim() || 'Oddiy mijoz',
-      discountAmount,
+      discountAmount: 0,
       totalAmount,
       cashReceived: totalAmount,
       refundAmount: 0,
@@ -191,7 +218,7 @@ export default function KassaView({
     setLastCompletedReceipt(receipt);
     setIsCheckoutOpen(true);
     setIsSuccessCheckout(true);
-    onCheckout('Karta', customerName.trim() || 'Oddiy mijoz', appliedDiscount, customerPhone.trim());
+    onCheckout('Karta', customerName.trim() || 'Oddiy mijoz', 0, customerPhone.trim());
   };
 
   // Finalize transaction
@@ -216,7 +243,7 @@ export default function KassaView({
       })),
       paymentMethod,
       customerName: customerName.trim() || 'Oddiy mijoz',
-      discountAmount,
+      discountAmount: 0,
       totalAmount,
       cashReceived: paymentMethod === 'Naqd' ? (parsedCash || totalAmount) : totalAmount,
       refundAmount: paymentMethod === 'Naqd' ? refundAmount : 0
@@ -226,7 +253,7 @@ export default function KassaView({
     setIsSuccessCheckout(true);
 
     // Update parent stock levels immediately
-    onCheckout(paymentMethod as 'Naqd' | 'Karta' | 'Nasiya', customerName.trim() || 'Oddiy mijoz', appliedDiscount, customerPhone.trim());
+    onCheckout(paymentMethod as 'Naqd' | 'Karta' | 'Nasiya', customerName.trim() || 'Oddiy mijoz', 0, customerPhone.trim());
   };
 
   const handleCloseSuccessfulReceipt = () => {
@@ -236,9 +263,6 @@ export default function KassaView({
     setCashReceived('');
     setCustomerName('');
     setCustomerPhone('');
-    setPromoCode('');
-    setAppliedDiscount(0);
-    setPromoMessage(null);
     setPaymentMethod('Naqd');
   };
 
@@ -282,26 +306,73 @@ export default function KassaView({
           
           {/* Scanning & Search Bar */}
           <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1 flex items-center bg-white border border-[#CBD5E1] rounded-xl px-4 py-3 focus-within:ring-2 focus-within:ring-[#004ac6]/20 transition-all shadow-sm">
-              <Scan className="text-[#64748B] w-5 h-5 mr-3" />
-              <input
-                type="text"
-                autoFocus
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={handleSearchKeyPress}
-                placeholder="Shtrix-kod yoki mahsulot nomini kiriting... (Enter bosing)"
-                className="bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-[#1E293B] placeholder-[#94A3B8] w-full text-sm font-medium"
-              />
-              {searchQuery && (
-                <button 
-                  onClick={() => setSearchQuery('')}
-                  className="p-1 hover:bg-slate-100 rounded-full"
-                >
-                  <X className="w-4 h-4 text-slate-500" />
-                </button>
+            <div className="flex-1 relative" ref={searchRef}>
+              <div className="flex items-center bg-white border border-[#CBD5E1] rounded-xl px-4 py-3 focus-within:ring-2 focus-within:ring-[#004ac6]/20 transition-all shadow-sm">
+                <Scan className="text-[#64748B] w-5 h-5 mr-3 shrink-0" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={handleSearchKeyPress}
+                  placeholder="Shtrix-kod yoki mahsulot nomini kiriting... (Enter bosing)"
+                  className="bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-[#1E293B] placeholder-[#94A3B8] w-full text-sm font-medium"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => { setSearchQuery(''); setSearchResults([]); }}
+                    className="p-1 hover:bg-slate-100 rounded-full shrink-0"
+                  >
+                    <X className="w-4 h-4 text-slate-500" />
+                  </button>
+                )}
+              </div>
+
+              {/* Qidiruv natijalari dropdown */}
+              {searchResults.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#E2E8F0] rounded-2xl shadow-2xl z-50 overflow-hidden max-h-72 overflow-y-auto">
+                  <div className="px-3 py-2 bg-slate-50 border-b border-[#E2E8F0] flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      {searchResults.length} ta natija topildi
+                    </span>
+                    <button onClick={() => setSearchResults([])} className="p-0.5 hover:bg-slate-200 rounded-full">
+                      <X className="w-3 h-3 text-slate-400" />
+                    </button>
+                  </div>
+                  {searchResults.map(product => {
+                    const isOut = product.stock <= 0;
+                    return (
+                      <button
+                        key={product.id}
+                        onClick={() => handleSelectFromDropdown(product)}
+                        disabled={isOut}
+                        className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-[#F1F5F9] last:border-0 transition-colors ${
+                          isOut ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'hover:bg-[#f0f3ff] cursor-pointer'
+                        }`}
+                      >
+                        <div className="w-8 h-8 shrink-0 rounded-lg bg-[#eeefff] text-[#2563eb] flex items-center justify-center overflow-hidden">
+                          {product.image
+                            ? <img src={product.image} alt="" className="w-full h-full object-cover" />
+                            : renderIcon(product.icon || 'Box', 'w-4 h-4')
+                          }
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-[#1E293B] truncate">{product.name}</p>
+                          <p className="text-[10px] text-slate-400 font-mono">{product.barcode}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs font-black text-[#2563eb]">{product.price.toLocaleString()} so'm</p>
+                          <p className={`text-[10px] font-bold ${isOut ? 'text-red-500' : 'text-green-600'}`}>
+                            {isOut ? 'Tugagan' : `${product.stock} ta bor`}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </div>
+
             <button
               onClick={() => setShowScanner(true)}
               style={{
@@ -345,13 +416,13 @@ export default function KassaView({
           </div>
 
           {/* Feedback/Notifier for scans */}
-          {promoMessage && (
+          {scanMessage && (
             <div className={`p-3 rounded-lg text-xs font-medium border ${
-              promoMessage.isError 
-                ? 'bg-red-50 border-red-200 text-red-700' 
+              scanMessage.isError
+                ? 'bg-red-50 border-red-200 text-red-700'
                 : 'bg-green-50 border-green-200 text-green-700'
             }`}>
-              {promoMessage.text}
+              {scanMessage.text}
             </div>
           )}
 
@@ -364,7 +435,7 @@ export default function KassaView({
               <div style={{display:'flex', gap:'12px', overflowX:'auto', paddingBottom:'8px'}}>
                 {featuredProducts.map(product => (
                   <div key={product.id}
-                    onClick={() => onAddToCart(product)}
+                    onClick={() => handleAddToCartSafe(product)}
                     style={{minWidth:'160px', height:'220px',
                       borderRadius:'16px', overflow:'hidden',
                       position:'relative', cursor:'pointer',
@@ -385,15 +456,6 @@ export default function KassaView({
                         🔥 {product.soldCount ?? 0} ta sotilgan
                       </div>
                     </div>
-                    {product.discount ? (
-                      <div style={{position:'absolute', top:'8px',
-                        left:'8px', background:'#DC2626',
-                        color:'white', borderRadius:'6px',
-                        padding:'2px 6px', fontSize:'11px',
-                        fontWeight:700}}>
-                        -{product.discount}%
-                      </div>
-                    ) : null}
                   </div>
                 ))}
               </div>
@@ -418,7 +480,7 @@ export default function KassaView({
                   return (
                     <div
                       key={product.id}
-                      onClick={() => !isOutOfStock && onAddToCart(product)}
+                      onClick={() => !isOutOfStock && handleAddToCartSafe(product)}
                       className={`group border rounded-2xl p-4 flex flex-col gap-3 transition-all duration-150 cursor-pointer shadow-sm relative overflow-hidden bg-white select-none ${
                         isOutOfStock 
                           ? 'opacity-65 border-[#E2E8F0]' 
@@ -543,14 +605,22 @@ export default function KassaView({
             {cart.length > 0 && (
               <button
                 onClick={() => {
-                  if (window.confirm(`Savatdagi ${totalItemsCount} ta mahsulotni o'chirasizmi?`)) {
+                  if (!confirmClear) {
+                    setConfirmClear(true);
+                    setTimeout(() => setConfirmClear(false), 3000);
+                  } else {
                     onClearCart();
+                    setConfirmClear(false);
                   }
                 }}
-                className="text-red-600 hover:text-red-700 hover:bg-red-50 px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
+                  confirmClear
+                    ? 'bg-red-600 text-white hover:bg-red-700'
+                    : 'text-red-600 hover:text-red-700 hover:bg-red-50'
+                }`}
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                Tozalash
+                {confirmClear ? 'Tasdiqlash?' : 'Tozalash'}
               </button>
             )}
           </div>
@@ -619,32 +689,6 @@ export default function KassaView({
                 <span>Oraliq jami (Subtotal):</span>
                 <span className="font-bold text-[#1E293B]">{subtotal.toLocaleString()} so&apos;m</span>
               </div>
-              {appliedDiscount > 0 && (
-                <div className="flex justify-between items-center font-medium text-green-600">
-                  <span>Chegirma ({appliedDiscount}%):</span>
-                  <span>-{discountAmount.toLocaleString()} so&apos;m</span>
-                </div>
-              )}
-            </div>
-
-            {/* Promo coupon form */}
-            <div className="flex items-center gap-2">
-              <div className="flex-1 flex items-center bg-[#F1F5F9] rounded-xl px-3 py-2 border border-[#E2E8F0]">
-                <Tag className="text-[#64748B] w-4 h-4 mr-2" />
-                <input
-                  type="text"
-                  value={promoCode}
-                  onChange={(e) => setPromoCode(e.target.value)}
-                  placeholder="Kupon kodi (masalan, PRO5)"
-                  className="bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-xs text-[#1E293B] placeholder-slate-400 w-full font-semibold"
-                />
-              </div>
-              <button
-                onClick={handleApplyPromo}
-                className="bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-300 active:scale-95 transition-all select-none cursor-pointer border border-slate-300"
-              >
-                Qo&apos;shish
-              </button>
             </div>
 
             <div className="pt-3 border-t border-[#F1F5F9] flex justify-between items-end">
@@ -704,9 +748,6 @@ export default function KassaView({
                   <div className="bg-slate-50 rounded-xl p-4 border border-[#E2E8F0] text-center space-y-1">
                     <p className="text-xs text-[#64748B] font-semibold uppercase tracking-wider">Jami to&apos;lov summasi</p>
                     <p className="text-3xl font-black text-[#2563eb]">{totalAmount.toLocaleString()} UZS</p>
-                    {appliedDiscount > 0 && (
-                      <p className="text-xs text-[#16A34A] font-semibold">Maxsus kupon orqali {appliedDiscount}% chegirma kiritildi</p>
-                    )}
                   </div>
 
                   {/* Payment method picker */}
@@ -895,18 +936,8 @@ export default function KassaView({
                     </div>
 
                     <div className="space-y-1 px-1 py-2 border-b border-dashed border-slate-300">
-                      <div className="flex justify-between font-bold text-[11px] text-slate-700">
-                        <span>ORALIK JAMI:</span>
-                        <span>{(lastCompletedReceipt?.totalAmount + lastCompletedReceipt?.discountAmount).toLocaleString()} UZS</span>
-                      </div>
-                      {lastCompletedReceipt?.discountAmount > 0 && (
-                        <div className="flex justify-between text-[11px] text-green-600 font-bold">
-                          <span>CHEGIRMA:</span>
-                          <span>-{lastCompletedReceipt?.discountAmount.toLocaleString()} UZS</span>
-                        </div>
-                      )}
                       <div className="flex justify-between text-xs font-black text-[#2563eb] pt-1">
-                        <span>YAKUNIY JAMI:</span>
+                        <span>JAMI TO&apos;LOV:</span>
                         <span>{lastCompletedReceipt?.totalAmount.toLocaleString()} UZS</span>
                       </div>
                     </div>
@@ -957,7 +988,10 @@ export default function KassaView({
                   {/* Actions footer */}
                   <div className="flex gap-3 justify-center">
                     <button
-                      onClick={() => alert(`Chek (${lastCompletedReceipt?.id}) muvaffaqiyatli chop etildi!`)}
+                      onClick={() => {
+                        setScanMessage({ text: `Chek ${lastCompletedReceipt?.id} chop etildi!`, isError: false });
+                        setTimeout(() => setScanMessage(null), 3000);
+                      }}
                       className="flex-1 max-w-[170px] bg-[#004ac6] hover:bg-[#003ea8] hover:shadow text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 border border-[#004ac6] select-none cursor-pointer transition-all text-xs"
                     >
                       <Printer className="w-4 h-4" />

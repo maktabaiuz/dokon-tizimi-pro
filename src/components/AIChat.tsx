@@ -3,6 +3,7 @@ import { X, Send, ImagePlus, Bot, Loader2 } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeSanitize from 'rehype-sanitize';
 import { Product, StoreSettings } from '../types';
 
 interface AIChatProps {
@@ -180,7 +181,7 @@ export default function AIChat({ products, settings }: AIChatProps) {
                   )}
                   {msg.role === 'ai' ? (
                     <div className="leading-relaxed [&_strong]:font-bold [&_strong]:text-slate-900 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0.5 [&_p]:my-0.5 [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold [&_code]:bg-slate-200 [&_code]:px-1 [&_code]:rounded [&_code]:text-[10px] [&_code]:font-mono">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>{msg.text}</ReactMarkdown>
                     </div>
                   ) : (
                     <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>

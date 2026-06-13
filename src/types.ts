@@ -66,6 +66,8 @@ export interface Cashier {
   id: string;
   name: string;
   pin: string;
+  pinHash?: string;
+  pinSalt?: string;
   storeLabel: string;
   role: 'owner' | 'cashier';
   isActive: boolean;
