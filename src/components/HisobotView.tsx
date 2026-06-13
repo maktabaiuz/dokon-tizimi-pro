@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Calendar,
   TrendingUp,
@@ -37,6 +37,7 @@ interface HisobotViewProps {
   expenses: Expense[];
   activeShift: ActiveShift;
   storeId: string;
+  lastUpdated?: Date;
   onCloseShift: () => void;
   onReturnSale: (saleId: string) => void;
   onPayDebt: (debtId: string, amount: number) => void;
@@ -51,6 +52,7 @@ export default function HisobotView({
   expenses,
   activeShift,
   storeId,
+  lastUpdated,
   onCloseShift,
   onReturnSale,
   onPayDebt,
@@ -81,16 +83,12 @@ export default function HisobotView({
   const [payMethod, setPayMethod] = useState<'Naqd' | 'Karta'>('Naqd');
 
   // Smena hisobot breakdown (bugungi sotuvlardan)
-  const shiftNaqdTotal = sales
-    .filter(s => s.timestamp.substring(0, 10) === today && s.paymentMethod === 'Naqd')
-    .reduce((a, s) => a + s.totalAmount, 0);
-  const shiftKartaTotal = sales
-    .filter(s => s.timestamp.substring(0, 10) === today && s.paymentMethod === 'Karta')
-    .reduce((a, s) => a + s.totalAmount, 0);
-  const shiftNasiyaTotal = sales
-    .filter(s => s.timestamp.substring(0, 10) === today && s.paymentMethod === 'Nasiya')
-    .reduce((a, s) => a + s.totalAmount, 0);
-  const shiftJamiTotal = shiftNaqdTotal + shiftKartaTotal + activeShift.qrTotal + shiftNasiyaTotal;
+  const { shiftNaqdTotal, shiftKartaTotal, shiftNasiyaTotal, shiftJamiTotal } = useMemo(() => {
+    const naqd   = sales.filter(s => s.timestamp.substring(0, 10) === today && s.paymentMethod === 'Naqd').reduce((a, s) => a + s.totalAmount, 0);
+    const karta  = sales.filter(s => s.timestamp.substring(0, 10) === today && s.paymentMethod === 'Karta').reduce((a, s) => a + s.totalAmount, 0);
+    const nasiya = sales.filter(s => s.timestamp.substring(0, 10) === today && s.paymentMethod === 'Nasiya').reduce((a, s) => a + s.totalAmount, 0);
+    return { shiftNaqdTotal: naqd, shiftKartaTotal: karta, shiftNasiyaTotal: nasiya, shiftJamiTotal: naqd + karta + activeShift.qrTotal + nasiya };
+  }, [sales, today, activeShift.qrTotal, lastUpdated]);
 
   // Xarajat tab state
   const [activeHisobotTab, setActiveHisobotTab] = useState<'hisobot' | 'xarajat'>('hisobot');
@@ -134,10 +132,10 @@ export default function HisobotView({
   };
 
   // Filtered sales by applied date range
-  const filteredSales = sales.filter(s =>
+  const filteredSales = useMemo(() => sales.filter(s =>
     s.timestamp.substring(0, 10) >= appliedStart &&
     s.timestamp.substring(0, 10) <= appliedEnd
-  );
+  ), [sales, appliedStart, appliedEnd, lastUpdated]);
 
   // CSV export
   const handleExportCSV = () => {
@@ -183,6 +181,40 @@ export default function HisobotView({
 
   // Total warehouse inventory valuation
   const totalWarehouseValuation = products.reduce((acc, p) => acc + (p.price * p.stock), 0);
+
+  // Avvalgi davr hisoblash (joriy davr uzunligiga teng)
+  const periodDays = Math.max(1, Math.round(
+    (new Date(appliedEnd).getTime() - new Date(appliedStart).getTime()) / 86400000
+  ) + 1);
+  const prevEnd = new Date(appliedStart);
+  prevEnd.setDate(prevEnd.getDate() - 1);
+  const prevStart = new Date(prevEnd);
+  prevStart.setDate(prevStart.getDate() - (periodDays - 1));
+  const prevStartStr = prevStart.toISOString().substring(0, 10);
+  const prevEndStr   = prevEnd.toISOString().substring(0, 10);
+
+  const prevSales = sales.filter(s =>
+    s.timestamp.substring(0, 10) >= prevStartStr &&
+    s.timestamp.substring(0, 10) <= prevEndStr
+  );
+  const prevRevenue = prevSales.reduce((a, s) => a + s.totalAmount, 0);
+  const prevCount   = prevSales.length;
+  const prevProfit  = prevSales.reduce((acc, sale) => {
+    return acc + sale.items.reduce((ia, item) => {
+      const mp = products.find(p => p.id === item.productId);
+      return ia + (item.price - (mp ? mp.costPrice : item.price * 0.75)) * item.quantity;
+    }, 0);
+  }, 0);
+
+  const calcPct = (curr: number, prev: number): string | null => {
+    if (prev === 0 && curr === 0) return null;
+    if (prev === 0) return '+100%';
+    const p = ((curr - prev) / prev * 100).toFixed(1);
+    return Number(p) > 0 ? `+${p}%` : `${p}%`;
+  };
+  const revenuePct = calcPct(totalSalesRevenue, prevRevenue);
+  const countPct   = calcPct(totalSalesCount, prevCount);
+  const profitPct  = calcPct(totalProfitCalculated, prevProfit);
 
   // 2. Bar chart estimations (Du to Ya)
   // Let&apos;s map last 7 days sales dynamically
@@ -422,7 +454,11 @@ export default function HisobotView({
             <span className="p-2.5 bg-[#f0f3ff] text-[#2563eb] rounded-xl">
               {renderIcon('Coins', 'w-5 h-5')}
             </span>
-            <span className="text-green-600 font-bold text-xs tracking-wide bg-green-50 px-2 py-0.5 rounded-full">+12%</span>
+            {revenuePct ? (
+              <span className={`font-bold text-xs tracking-wide px-2 py-0.5 rounded-full ${revenuePct.startsWith('+') ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50'}`}>{revenuePct}</span>
+            ) : (
+              <span className="text-slate-400 font-bold text-xs tracking-wide bg-slate-100 px-2 py-0.5 rounded-full">—</span>
+            )}
           </div>
           <div className="mt-4">
             <p className="text-[#64748B] text-xs font-bold uppercase tracking-wider">Bugungi savdo summasi</p>
@@ -436,7 +472,11 @@ export default function HisobotView({
             <span className="p-2.5 bg-[#eeefff] text-[#004ac6] rounded-xl">
               {renderIcon('ShoppingCart', 'w-5 h-5')}
             </span>
-            <span className="text-green-600 font-bold text-xs tracking-wide bg-green-50 px-2 py-0.5 rounded-full">+5.5%</span>
+            {countPct ? (
+              <span className={`font-bold text-xs tracking-wide px-2 py-0.5 rounded-full ${countPct.startsWith('+') ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50'}`}>{countPct}</span>
+            ) : (
+              <span className="text-slate-400 font-bold text-xs tracking-wide bg-slate-100 px-2 py-0.5 rounded-full">—</span>
+            )}
           </div>
           <div className="mt-4">
             <p className="text-[#64748B] text-xs font-bold uppercase tracking-wider">Sotuvlar (Cheklar) soni</p>
@@ -450,7 +490,11 @@ export default function HisobotView({
             <span className="p-2.5 bg-green-50 text-green-600 rounded-xl">
               {renderIcon('TrendingUp', 'w-5 h-5')}
             </span>
-            <span className="text-green-600 font-bold text-xs tracking-wide bg-green-50 px-2 py-0.5 rounded-full">+8.2%</span>
+            {profitPct ? (
+              <span className={`font-bold text-xs tracking-wide px-2 py-0.5 rounded-full ${profitPct.startsWith('+') ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50'}`}>{profitPct}</span>
+            ) : (
+              <span className="text-slate-400 font-bold text-xs tracking-wide bg-slate-100 px-2 py-0.5 rounded-full">—</span>
+            )}
           </div>
           <div className="mt-4">
             <p className="text-[#64748B] text-xs font-bold uppercase tracking-wider">Joriy toza foyda (Ustama)</p>

@@ -1775,11 +1775,28 @@ export default function AdminView({
                 >
                   Bekor qilish
                 </button>
-                <button type="submit"
-                  style={{ flex:2, padding:'12px', background:'linear-gradient(135deg,#2563eb 0%,#1d4ed8 100%)', border:'none', borderRadius:'14px', fontSize:'13px', fontWeight:800, color:'white', cursor:'pointer', boxShadow:'0 4px 14px rgba(37,99,235,0.35)' }}
-                >
-                  {editingProduct ? '✓ Tahrirlarni saqlash' : "+ Tovar qo'shish"}
-                </button>
+                {(() => {
+                  const isLoss = formData.price > 0 && formData.costPrice > 0 && formData.price <= formData.costPrice;
+                  const isInvalid = formData.costPrice <= 0 || formData.price <= 0 || isLoss;
+                  return (
+                    <button type="submit"
+                      disabled={isInvalid}
+                      title={isLoss ? "Sotish narxi tan narxidan kam — zarar! Saqlash mumkin emas" : isInvalid ? "Narxlarni to'ldiring" : ''}
+                      style={{
+                        flex:2, padding:'12px', border:'none', borderRadius:'14px',
+                        fontSize:'13px', fontWeight:800, color:'white',
+                        cursor: isInvalid ? 'not-allowed' : 'pointer',
+                        background: isInvalid
+                          ? 'linear-gradient(135deg,#94A3B8 0%,#CBD5E1 100%)'
+                          : 'linear-gradient(135deg,#2563eb 0%,#1d4ed8 100%)',
+                        boxShadow: isInvalid ? 'none' : '0 4px 14px rgba(37,99,235,0.35)',
+                        opacity: isInvalid ? 0.7 : 1,
+                      }}
+                    >
+                      {editingProduct ? '✓ Tahrirlarni saqlash' : "+ Tovar qo'shish"}
+                    </button>
+                  );
+                })()}
               </div>
             </form>
           </div>

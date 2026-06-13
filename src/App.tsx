@@ -106,6 +106,7 @@ export default function App() {
   });
   useEffect(() => { saveExpenses(activeStoreIdRef.current, expenses); }, [expenses]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'kassa' | 'admin' | 'hisobot' | 'barkod' | 'smena' | 'ai'>('kassa');
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
   // Dark mode
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -331,6 +332,8 @@ export default function App() {
 
     // 5. Clear only the active cart
     setCarts(prev => prev.map((c, i) => i === activeCart ? [] : c));
+
+    setLastUpdated(new Date());
   };
 
   // Action: Add new product to inventory database (Admin view)
@@ -391,6 +394,7 @@ export default function App() {
       .map(d => d.id === debtId ? { ...d, paidAmount: d.paidAmount + amount } : d)
       .filter(d => d.paidAmount < d.amount)
     );
+    setLastUpdated(new Date());
   };
 
   // Action: Return/Vozvrat Completed Sales (Hisobot view)
@@ -420,13 +424,15 @@ export default function App() {
     setActiveShift((prev) => ({
       ...prev,
       salesCount: Math.max(0, prev.salesCount - 1),
-      currentCash: matchedSale.paymentMethod === 'Naqd' 
-        ? Math.max(0, prev.currentCash - matchedSale.totalAmount) 
+      currentCash: matchedSale.paymentMethod === 'Naqd'
+        ? Math.max(0, prev.currentCash - matchedSale.totalAmount)
         : prev.currentCash,
-      terminal: matchedSale.paymentMethod === 'Karta' 
-        ? Math.max(0, prev.terminal - matchedSale.totalAmount) 
+      terminal: matchedSale.paymentMethod === 'Karta'
+        ? Math.max(0, prev.terminal - matchedSale.totalAmount)
         : prev.terminal,
     }));
+
+    setLastUpdated(new Date());
   };
 
   const lowStockCount = products.filter((p: Product) => p.stock > 0 && p.stock <= (p.lowStockThreshold || 5)).length;
@@ -637,6 +643,7 @@ export default function App() {
             settings={settings}
             activeShift={activeShift}
             cashierName={cashierName}
+            lastUpdated={lastUpdated}
           />
         )}
 
@@ -685,6 +692,7 @@ export default function App() {
             expenses={expenses}
             activeShift={activeShift}
             storeId={activeStoreId}
+            lastUpdated={lastUpdated}
             onCloseShift={handleCloseShift}
             onReturnSale={handleReturnSale}
             onPayDebt={handlePayDebt}
@@ -704,6 +712,7 @@ export default function App() {
             cashierName={cashierName}
             sales={sales}
             activeShift={activeShift}
+            lastUpdated={lastUpdated}
             onCloseShift={handleCloseShift}
           />
         )}

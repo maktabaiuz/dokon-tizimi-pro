@@ -76,6 +76,7 @@ export default function KassaView({
   const [cashReceived, setCashReceived] = useState<string>('');
   const [isSuccessCheckout, setIsSuccessCheckout] = useState<boolean>(false);
   const [lastCompletedReceipt, setLastCompletedReceipt] = useState<any>(null);
+  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
 
   // Filter products by category and search term
   const filteredProducts = products.filter(product => {
@@ -217,40 +218,54 @@ export default function KassaView({
     onCheckout('Karta', customerName.trim() || 'Oddiy mijoz', 0, customerPhone.trim());
   };
 
+  // Naqd to'lovda yetarlilik tekshiruvi
+  const isPaymentInsufficient =
+    paymentMethod === 'Naqd' && cashReceived !== '' && parsedCash < totalAmount;
+
   // Finalize transaction
   const handleFinalCheckoutSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (cart.length === 0) return;
-    if (paymentMethod === 'QR') {
-      setShowQR(true);
-      return;
+    if (paymentMethod === 'QR') { setShowQR(true); return; }
+
+    // Naqd pul yetarliligini tekshir — har ehtimolga qarshi ikkinchi qatl
+    if (paymentMethod === 'Naqd' && cashReceived !== '' && parsedCash < totalAmount) return;
+
+    setIsCheckoutLoading(true);
+
+    const commitTimeout = setTimeout(() => {
+      setIsCheckoutLoading(false);
+    }, 10000);
+
+    try {
+      const receipt = {
+        id: `TR-${Math.floor(10000 + Math.random() * 90000)}`,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        cashier: cashierName,
+        items: cart.map(item => ({
+          productId: item.product.id,
+          name: item.product.name,
+          quantity: item.quantity,
+          price: item.product.price,
+        })),
+        paymentMethod,
+        customerName: customerName.trim() || 'Oddiy mijoz',
+        discountAmount: 0,
+        totalAmount,
+        cashReceived: paymentMethod === 'Naqd' ? (parsedCash || totalAmount) : totalAmount,
+        refundAmount: paymentMethod === 'Naqd' ? refundAmount : 0,
+      };
+
+      setLastCompletedReceipt(receipt);
+      setIsSuccessCheckout(true);
+      printReceipt(receipt as any, settings, cashierName);
+      onCheckout(paymentMethod as 'Naqd' | 'Karta' | 'Nasiya', customerName.trim() || 'Oddiy mijoz', 0, customerPhone.trim());
+    } catch (_err) {
+      // UI ni muzlatmaslik uchun xatoni yutib yuboramiz
+    } finally {
+      clearTimeout(commitTimeout);
+      setIsCheckoutLoading(false);
     }
-
-    // Create receipt structure to display in printed version
-    const receipt = {
-      id: `TR-${Math.floor(10000 + Math.random() * 90000)}`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      cashier: cashierName,
-      items: cart.map(item => ({
-        productId: item.product.id,
-        name: item.product.name,
-        quantity: item.quantity,
-        price: item.product.price,
-      })),
-      paymentMethod,
-      customerName: customerName.trim() || 'Oddiy mijoz',
-      discountAmount: 0,
-      totalAmount,
-      cashReceived: paymentMethod === 'Naqd' ? (parsedCash || totalAmount) : totalAmount,
-      refundAmount: paymentMethod === 'Naqd' ? refundAmount : 0
-    };
-
-    setLastCompletedReceipt(receipt);
-    setIsSuccessCheckout(true);
-    printReceipt(receipt as any, settings, cashierName);
-
-    // Update parent stock levels immediately
-    onCheckout(paymentMethod as 'Naqd' | 'Karta' | 'Nasiya', customerName.trim() || 'Oddiy mijoz', 0, customerPhone.trim());
   };
 
   const handleCloseSuccessfulReceipt = () => {
@@ -263,8 +278,10 @@ export default function KassaView({
     setPaymentMethod('Naqd');
   };
 
-  // Quick ticker warnings (extremely matching layout)
-  const lowStockItems = products.filter(p => p.stock > 0 && p.stock <= (p.lowStockThreshold || 5));
+  // Quick ticker warnings — 0 ta qolgan mahsulotlar HAM ko'rinishi kerak
+  const lowStockItems = products
+    .filter(p => p.stock <= (p.lowStockThreshold || 5))
+    .sort((a, b) => a.stock - b.stock);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 relative select-none bg-[#F9F9FF]">
@@ -895,15 +912,38 @@ export default function KassaView({
                   {/* Complete button */}
                   <button
                     type="submit"
-                    className="w-full mt-4 bg-[#16A34A] hover:bg-[#15803d] text-white py-3.5 rounded-xl font-bold text-sm shadow-md active:scale-97 select-none cursor-pointer transition-all duration-150"
+                    disabled={isPaymentInsufficient || isCheckoutLoading}
+                    className={`w-full mt-4 py-3.5 rounded-xl font-bold text-sm shadow-md transition-all duration-150 select-none flex items-center justify-center gap-2 ${
+                      isPaymentInsufficient
+                        ? 'bg-red-100 text-red-400 cursor-not-allowed border border-red-200'
+                        : isCheckoutLoading
+                          ? 'bg-green-300 text-white cursor-wait'
+                          : 'bg-[#16A34A] hover:bg-[#15803d] text-white active:scale-97 cursor-pointer'
+                    }`}
                   >
-                    Tranzaksiyani yakunlash (Chek yaratish)
+                    {isCheckoutLoading ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Yuklanmoqda...
+                      </>
+                    ) : isPaymentInsufficient ? (
+                      "Pul yetarli emas — summa kam"
+                    ) : (
+                      "Tranzaksiyani yakunlash (Chek yaratish)"
+                    )}
                   </button>
                 </form>
               ) : (
                 
                 /* Printable Invoice Receipt View */
                 <div className="space-y-6">
+                  {/* Success banner */}
+                  <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
+                    <p className="text-green-700 font-semibold text-sm">
+                      Sotuv amalga oshdi: {lastCompletedReceipt?.totalAmount.toLocaleString('uz-UZ')} so'm
+                    </p>
+                  </div>
                   {/* Digitalized POS paper thermal ticket matching custom styling rules */}
                   <div className="border border-slate-300 p-5 rounded-lg font-mono text-xs text-slate-800 bg-[#FCFDFE] shadow-inner space-y-4 leading-relaxed tracking-tight max-w-[340px] mx-auto overflow-hidden">
                     

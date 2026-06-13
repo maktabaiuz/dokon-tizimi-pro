@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "cd 'c:\\Users\\admin\\Desktop\\DOKONIM'; git add -A; $msg = 'Auto-save: ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'); git diff --cached --quiet; if (-not $?) { git commit -m $msg; git push origin main } 2>$null",
+            "timeout": 30,
+            "statusMessage": "GitHub-ga saqlanyapti..."
+          }
+        ]
+      }
+    ]
+  }
+}

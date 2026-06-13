@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Clock,
   Unlock,
@@ -18,23 +18,22 @@ interface SmenaViewProps {
   cashierName: string;
   sales: Sale[];
   activeShift: ActiveShift;
+  lastUpdated?: Date;
   onCloseShift: () => void;
 }
 
-export default function SmenaView({ cashierName, sales, activeShift, onCloseShift }: SmenaViewProps) {
+export default function SmenaView({ cashierName, sales, activeShift, lastUpdated, onCloseShift }: SmenaViewProps) {
   const [showModal, setShowModal] = useState(false);
 
   const today = new Date().toISOString().substring(0, 10);
 
-  // Faqat shu kassirning bugungi sotuvlari
-  const mySales = sales.filter(
-    s => s.timestamp.substring(0, 10) === today && s.cashier === cashierName
-  );
-
-  const naqdTotal   = mySales.filter(s => s.paymentMethod === 'Naqd').reduce((a, s) => a + s.totalAmount, 0);
-  const kartaTotal  = mySales.filter(s => s.paymentMethod === 'Karta').reduce((a, s) => a + s.totalAmount, 0);
-  const nasiyaTotal = mySales.filter(s => s.paymentMethod === 'Nasiya').reduce((a, s) => a + s.totalAmount, 0);
-  const jamiTotal   = naqdTotal + kartaTotal + activeShift.qrTotal + nasiyaTotal;
+  const { mySales, naqdTotal, kartaTotal, nasiyaTotal, jamiTotal } = useMemo(() => {
+    const my     = sales.filter(s => s.timestamp.substring(0, 10) === today && s.cashier === cashierName);
+    const naqd   = my.filter(s => s.paymentMethod === 'Naqd').reduce((a, s) => a + s.totalAmount, 0);
+    const karta  = my.filter(s => s.paymentMethod === 'Karta').reduce((a, s) => a + s.totalAmount, 0);
+    const nasiya = my.filter(s => s.paymentMethod === 'Nasiya').reduce((a, s) => a + s.totalAmount, 0);
+    return { mySales: my, naqdTotal: naqd, kartaTotal: karta, nasiyaTotal: nasiya, jamiTotal: naqd + karta + activeShift.qrTotal + nasiya };
+  }, [sales, cashierName, today, activeShift.qrTotal, lastUpdated]);
 
   const fmt = (n: number) => n.toLocaleString();
 
