@@ -197,6 +197,7 @@ export const INITIAL_SETTINGS: StoreSettings = {
   address: "Toshkent sh., Yunusobod tumani, 4-kvartal",
   phone: "+998 90 123 45 67",
   inn: "302145698",
+  merchantId: '',
   paperSize: '58mm',
   operatorPin: '1234',
 };

@@ -20,7 +20,8 @@ import {
   Camera
 } from 'lucide-react';
 import { Product, Category, CartItem, StoreSettings } from '../types';
-import * as Icons from 'lucide-react';
+import renderIcon from '../utils/renderIcon';
+import { printReceipt } from '../utils/printReceipt';
 import QRPaymentModal from './QRPaymentModal';
 
 interface KassaViewProps {
@@ -75,12 +76,6 @@ export default function KassaView({
   const [cashReceived, setCashReceived] = useState<string>('');
   const [isSuccessCheckout, setIsSuccessCheckout] = useState<boolean>(false);
   const [lastCompletedReceipt, setLastCompletedReceipt] = useState<any>(null);
-
-  // Dynamic Lucide icon lookup helper
-  const renderIcon = (iconName: string, className: string = 'w-4 h-4') => {
-    const LucideIcon = (Icons as any)[iconName] || Icons.Box;
-    return <LucideIcon className={className} />;
-  };
 
   // Filter products by category and search term
   const filteredProducts = products.filter(product => {
@@ -218,6 +213,7 @@ export default function KassaView({
     setLastCompletedReceipt(receipt);
     setIsCheckoutOpen(true);
     setIsSuccessCheckout(true);
+    printReceipt({ ...receipt, paymentMethod: 'Karta' } as any, settings, cashierName);
     onCheckout('Karta', customerName.trim() || 'Oddiy mijoz', 0, customerPhone.trim());
   };
 
@@ -251,6 +247,7 @@ export default function KassaView({
 
     setLastCompletedReceipt(receipt);
     setIsSuccessCheckout(true);
+    printReceipt(receipt as any, settings, cashierName);
 
     // Update parent stock levels immediately
     onCheckout(paymentMethod as 'Naqd' | 'Karta' | 'Nasiya', customerName.trim() || 'Oddiy mijoz', 0, customerPhone.trim());
@@ -1015,6 +1012,7 @@ export default function KassaView({
         isOpen={showQR}
         amount={totalAmount}
         storeName={settings.storeName}
+        merchantId={settings.merchantId || ''}
         onClose={() => setShowQR(false)}
         onConfirm={handleQRConfirm}
       />

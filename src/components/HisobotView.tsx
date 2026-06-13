@@ -25,27 +25,37 @@ import {
   QrCode,
   Banknote,
 } from 'lucide-react';
-import { Product, Debt, Sale, StoreSettings, ActiveShift } from '../types';
-import * as Icons from 'lucide-react';
+import { Product, Debt, Sale, ActiveShift, Expense } from '../types';
+import renderIcon from '../utils/renderIcon';
+
+const EXPENSE_CATEGORIES = ['Ijara', 'Maosh', 'Kommunal', 'Transport', 'Reklama', 'Boshqa'];
 
 interface HisobotViewProps {
   products: Product[];
   sales: Sale[];
   debts: Debt[];
+  expenses: Expense[];
   activeShift: ActiveShift;
+  storeId: string;
   onCloseShift: () => void;
   onReturnSale: (saleId: string) => void;
   onPayDebt: (debtId: string, amount: number) => void;
+  onAddExpense: (expense: Expense) => void;
+  onDeleteExpense: (id: string) => void;
 }
 
 export default function HisobotView({
   products,
   sales,
   debts,
+  expenses,
   activeShift,
+  storeId,
   onCloseShift,
   onReturnSale,
   onPayDebt,
+  onAddExpense,
+  onDeleteExpense,
 }: HisobotViewProps) {
   const today = new Date().toISOString().substring(0, 10);
 
@@ -81,10 +91,28 @@ export default function HisobotView({
     .reduce((a, s) => a + s.totalAmount, 0);
   const shiftJamiTotal = shiftNaqdTotal + shiftKartaTotal + activeShift.qrTotal + shiftNasiyaTotal;
 
-  const renderIcon = (name: string, className: string = 'w-4 h-4') => {
-    const LucideIcon = (Icons as any)[name] || Icons.Box;
-    return <LucideIcon className={className} />;
+  // Xarajat tab state
+  const [activeHisobotTab, setActiveHisobotTab] = useState<'hisobot' | 'xarajat'>('hisobot');
+  const [expenseForm, setExpenseForm] = useState({ amount: '', category: EXPENSE_CATEGORIES[0], description: '' });
+  const [expenseError, setExpenseError] = useState('');
+
+  const handleAddExpense = (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = parseFloat(expenseForm.amount);
+    if (!amount || amount <= 0) { setExpenseError("Summa 0 dan katta bo'lishi kerak"); return; }
+    setExpenseError('');
+    onAddExpense({
+      id: `exp-${Date.now()}`,
+      date: new Date().toISOString().substring(0, 10),
+      amount,
+      category: expenseForm.category,
+      description: expenseForm.description.trim(),
+      storeId,
+    });
+    setExpenseForm({ amount: '', category: EXPENSE_CATEGORIES[0], description: '' });
   };
+
+  const totalExpenses = expenses.reduce((a, e) => a + e.amount, 0);
 
   // Quick date range helpers
   const getWeekStart = () => {
@@ -186,9 +214,144 @@ export default function HisobotView({
     sale.paymentMethod.toLowerCase().includes(salesSearchQuery.toLowerCase())
   );
 
+  const netProfit = totalProfitCalculated - totalExpenses;
+
   return (
-    <div className="flex-1 p-6 space-y-6 bg-[#F9F9FF] overflow-y-auto custom-scrollbar select-none">
-      
+    <div className="flex-1 flex flex-col bg-[#F9F9FF] overflow-hidden">
+
+      {/* Tab navigation */}
+      <div className="flex gap-1 px-6 pt-5 pb-0 border-b border-[#E2E8F0] bg-white shrink-0">
+        <button
+          onClick={() => setActiveHisobotTab('hisobot')}
+          className={`px-5 py-2.5 text-xs font-bold rounded-t-xl transition-all cursor-pointer ${
+            activeHisobotTab === 'hisobot'
+              ? 'bg-[#f0f3ff] text-[#2563eb] border-b-2 border-[#2563eb]'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Hisobot
+        </button>
+        <button
+          onClick={() => setActiveHisobotTab('xarajat')}
+          className={`px-5 py-2.5 text-xs font-bold rounded-t-xl transition-all cursor-pointer ${
+            activeHisobotTab === 'xarajat'
+              ? 'bg-[#f0f3ff] text-[#2563eb] border-b-2 border-[#2563eb]'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Xarajatlar
+          {expenses.length > 0 && (
+            <span className="ml-1.5 bg-red-100 text-red-600 text-[9px] font-black px-1.5 py-0.5 rounded-full">
+              {expenses.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Xarajat tab */}
+      {activeHisobotTab === 'xarajat' && (
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+
+          {/* Foyda umumiy kartasi */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white p-5 rounded-2xl border border-[#c3c6d7] shadow-sm">
+              <p className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Savdo daromadi</p>
+              <p className="text-xl font-black text-[#2563eb] mt-1">{totalSalesRevenue.toLocaleString()} UZS</p>
+            </div>
+            <div className="bg-white p-5 rounded-2xl border border-[#c3c6d7] shadow-sm">
+              <p className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Xarajatlar jami</p>
+              <p className="text-xl font-black text-red-600 mt-1">{totalExpenses.toLocaleString()} UZS</p>
+            </div>
+            <div className={`p-5 rounded-2xl border shadow-sm ${netProfit >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+              <p className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Sof foyda</p>
+              <p className={`text-xl font-black mt-1 ${netProfit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                {netProfit >= 0 ? '+' : ''}{netProfit.toLocaleString()} UZS
+              </p>
+            </div>
+          </div>
+
+          {/* Xarajat qo'shish formasi */}
+          <div className="bg-white rounded-2xl border border-[#c3c6d7] p-5 shadow-sm">
+            <h3 className="text-sm font-bold text-[#1E293B] mb-4">Yangi xarajat qo'shish</h3>
+            <form onSubmit={handleAddExpense} className="flex flex-wrap gap-3 items-end">
+              <div className="space-y-1 min-w-[120px]">
+                <label className="text-xs font-bold text-[#64748B] block">Summa (UZS)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={expenseForm.amount}
+                  onChange={e => { setExpenseForm(f => ({ ...f, amount: e.target.value })); setExpenseError(''); }}
+                  placeholder="50000"
+                  className={`w-full px-3 py-2 bg-slate-50 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-[#2563eb]/20 ${expenseError ? 'border-red-400' : 'border-[#E2E8F0]'}`}
+                />
+                {expenseError && <p className="text-[10px] text-red-500 font-semibold">{expenseError}</p>}
+              </div>
+              <div className="space-y-1 min-w-[130px]">
+                <label className="text-xs font-bold text-[#64748B] block">Kategoriya</label>
+                <select
+                  value={expenseForm.category}
+                  onChange={e => setExpenseForm(f => ({ ...f, category: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-50 border border-[#E2E8F0] rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-[#2563eb]/20 cursor-pointer"
+                >
+                  {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1 flex-1 min-w-[160px]">
+                <label className="text-xs font-bold text-[#64748B] block">Izoh</label>
+                <input
+                  type="text"
+                  value={expenseForm.description}
+                  onChange={e => setExpenseForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="Ixtiyoriy izoh..."
+                  className="w-full px-3 py-2 bg-slate-50 border border-[#E2E8F0] rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-[#2563eb]/20"
+                />
+              </div>
+              <button
+                type="submit"
+                className="bg-[#2563eb] hover:bg-[#004ac6] text-white px-5 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all shadow-md select-none"
+              >
+                Qo'shish
+              </button>
+            </form>
+          </div>
+
+          {/* Xarajatlar ro'yxati */}
+          <div className="bg-white rounded-2xl border border-[#c3c6d7] shadow-sm overflow-hidden">
+            <div className="px-5 py-3 bg-slate-50 border-b border-[#E2E8F0]">
+              <p className="text-xs font-bold text-slate-600">{expenses.length} ta xarajat</p>
+            </div>
+            {expenses.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 text-sm">Hali xarajat kiritilmagan</div>
+            ) : (
+              <div className="divide-y divide-[#F1F5F9]">
+                {[...expenses].reverse().map(exp => (
+                  <div key={exp.id} className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-[#1E293B]">{exp.amount.toLocaleString()} UZS</span>
+                        <span className="text-[10px] font-bold bg-[#f0f3ff] text-[#2563eb] px-2 py-0.5 rounded-full">{exp.category}</span>
+                        <span className="text-[10px] text-slate-400 font-mono">{exp.date}</span>
+                      </div>
+                      {exp.description && <p className="text-[11px] text-slate-500 mt-0.5 truncate">{exp.description}</p>}
+                    </div>
+                    <button
+                      onClick={() => onDeleteExpense(exp.id)}
+                      className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Hisobot tab */}
+      {activeHisobotTab === 'hisobot' && (
+      <div className="flex-1 p-6 space-y-6 overflow-y-auto custom-scrollbar select-none">
+
       {/* Header with Date Selection Block */}
       <header className="flex flex-col gap-3">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -864,6 +1027,9 @@ export default function HisobotView({
             </div>
           </div>
         </div>
+      )}
+
+      </div>
       )}
 
     </div>

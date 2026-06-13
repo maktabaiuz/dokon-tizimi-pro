@@ -1,9 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-const FEATURE_FLAGS = {
-  enableDiscount: false,
-};
-
 // ── EAN-13 barcode canvas renderer ───────────────────────────────────────────
 const L_CODES = ['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];
 const G_CODES = ['0100111','0110011','0011011','0100001','0011101','0111001','0000101','0010001','0001001','0010111'];
@@ -67,7 +63,7 @@ import { Product, Category, StoreSettings, Cashier, Store as StoreData } from '.
 import { exportAllData, importAllData } from '../utils/storage';
 import { fmtStore } from '../utils/format';
 import { generateSalt, hashPin } from '../utils/crypto';
-import * as Icons from 'lucide-react';
+import renderIcon from '../utils/renderIcon';
 import BarcodeScanner from './BarcodeScanner';
 
 interface AdminViewProps {
@@ -256,11 +252,6 @@ export default function AdminView({
     a.download = 'mahsulotlar_shablon.csv';
     a.click();
     URL.revokeObjectURL(url);
-  };
-
-  const renderIcon = (name: string, className: string = 'w-4 h-4') => {
-    const LucideIcon = (Icons as any)[name] || Icons.Box;
-    return <LucideIcon className={className} />;
   };
 
   // KPI calculations
@@ -585,9 +576,6 @@ export default function AdminView({
                       <th className="px-5 py-3 text-center">Min. zaxira</th>
                       <th className="px-5 py-3 text-center">Ustama (Foyda)</th>
                       <th className="px-5 py-3 text-center">⭐ Vitrina</th>
-                      {FEATURE_FLAGS.enableDiscount && (
-                        <th className="px-5 py-3 text-center">Aksiya %</th>
-                      )}
                       <th className="px-5 py-3 text-center">Sotilgan</th>
                       <th className="px-5 py-3 text-right">Amallar</th>
                     </tr>
@@ -667,26 +655,6 @@ export default function AdminView({
                               {product.isFeatured ? '⭐ Trend' : '☆ Trend'}
                             </button>
                           </td>
-
-                          {/* Aksiya % — feature flag orqali boshqariladi */}
-                          {FEATURE_FLAGS.enableDiscount && (
-                            <td className="px-5 py-4 text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="99"
-                                  value={product.discount || 0}
-                                  onChange={e => {
-                                    const val = Math.min(99, Math.max(0, parseInt(e.target.value) || 0));
-                                    onUpdateProduct({ ...product, discount: val });
-                                  }}
-                                  className="w-12 text-center text-xs font-bold border border-slate-200 rounded-lg py-1 focus:outline-none focus:border-[#2563eb] bg-white"
-                                />
-                                <span className="text-[10px] text-slate-400">%</span>
-                              </div>
-                            </td>
-                          )}
 
                           {/* Sotilgan */}
                           <td className="px-5 py-4 text-center">
@@ -874,6 +842,18 @@ export default function AdminView({
                         className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-medium focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-sm text-[#1E293B]"
                       />
                     </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#64748B] block">Merchant ID (QR to&apos;lov)</label>
+                    <input
+                      type="text"
+                      value={settingsForm.merchantId || ''}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, merchantId: e.target.value })}
+                      placeholder="Click/Payme/Uzum merchant ID..."
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-medium focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-sm text-[#1E293B] font-mono"
+                    />
+                    <p className="text-[10px] text-slate-400">QR kod to&apos;lovlarda ishlatiladi. To&apos;lov tizimingizdan oling.</p>
                   </div>
                 </div>
 

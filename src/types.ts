@@ -78,8 +78,18 @@ export interface StoreSettings {
   address: string;
   phone: string;
   inn: string;
+  merchantId: string;
   paperSize: '58mm' | '80mm' | 'A4';
   operatorPin: string;
+}
+
+export interface Expense {
+  id: string;
+  date: string;
+  amount: number;
+  category: string;
+  description: string;
+  storeId: string;
 }
 
 export interface Store {

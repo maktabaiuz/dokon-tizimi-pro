@@ -12,11 +12,10 @@ import {
   ChevronDown,
   Check,
 } from 'lucide-react';
-import { Product, Category, CartItem, Debt, Sale, ActiveShift, StoreSettings, Cashier, Store as StoreType } from './types';
+import { Product, Category, CartItem, Debt, Sale, ActiveShift, StoreSettings, Cashier, Store as StoreType, Expense } from './types';
 
-import { loadCashiers, saveCashiers, loadStores, saveStores, loadActiveStoreId, saveActiveStoreId, loadStoreData, saveStoreData } from './utils/storage';
+import { loadCashiers, saveCashiers, loadStores, saveStores, loadActiveStoreId, saveActiveStoreId, loadStoreData, saveStoreData, loadExpenses, saveExpenses } from './utils/storage';
 import { fmtStore } from './utils/format';
-import { generateSalt, hashPin } from './utils/crypto';
 import {
   INITIAL_PRODUCTS,
   INITIAL_CATEGORIES,
@@ -43,26 +42,6 @@ export default function App() {
   // Cashiers database (global, not per-store)
   const [cashiers, setCashiers] = useState<Cashier[]>(() => loadCashiers() ?? INITIAL_CASHIERS);
   useEffect(() => { saveCashiers(cashiers); }, [cashiers]);
-
-  // One-time migration: hash any plain-text PINs that haven't been hashed yet
-  const pinMigrationDone = useRef(false);
-  useEffect(() => {
-    if (pinMigrationDone.current) return;
-    const needsMigration = cashiers.some(c => c.pin && !c.pinHash);
-    if (!needsMigration) { pinMigrationDone.current = true; return; }
-    pinMigrationDone.current = true;
-    (async () => {
-      const migrated = await Promise.all(cashiers.map(async c => {
-        if (c.pin && !c.pinHash) {
-          const salt = generateSalt();
-          const pinHash = await hashPin(c.pin, salt);
-          return { ...c, pinHash, pinSalt: salt };
-        }
-        return c;
-      }));
-      setCashiers(migrated);
-    })();
-  }, [cashiers]);
 
   // Multi-store state
   const DEFAULT_STORE: StoreType = { id: 'store1', name: "Do'kon 1", address: '', phone: '' };
@@ -114,6 +93,13 @@ export default function App() {
     const sid = loadActiveStoreId() ?? 'store1';
     return loadStoreData<StoreSettings>(sid, 'settings') ?? INITIAL_SETTINGS;
   });
+
+  // Expenses per store
+  const [expenses, setExpenses] = useState<Expense[]>(() => {
+    const sid = loadActiveStoreId() ?? 'store1';
+    return loadExpenses(sid) ?? [];
+  });
+  useEffect(() => { saveExpenses(activeStoreIdRef.current, expenses); }, [expenses]);
   const [activeTab, setActiveTab] = useState<'kassa' | 'admin' | 'hisobot' | 'barkod' | 'smena' | 'ai'>('kassa');
 
   // Multi-cart state (3 parallel carts)
@@ -181,12 +167,14 @@ export default function App() {
     const newSettings = loadStoreData<StoreSettings>(newStoreId, 'settings') ?? INITIAL_SETTINGS;
     const newDebts = loadStoreData<Debt[]>(newStoreId, 'debts') ?? INITIAL_DEBTS;
     const newSales = loadStoreData<Sale[]>(newStoreId, 'sales') ?? INITIAL_SALES;
+    const newExpenses = loadExpenses(newStoreId) ?? [];
     setActiveStoreId(newStoreId);
     setProducts(newProducts);
     setCategories(newCategories);
     setSettings(newSettings);
     setDebts(newDebts);
     setSales(newSales);
+    setExpenses(newExpenses);
     setCarts([[], [], []]);
   };
 
@@ -624,10 +612,14 @@ export default function App() {
             products={products}
             sales={sales}
             debts={debts}
+            expenses={expenses}
             activeShift={activeShift}
+            storeId={activeStoreId}
             onCloseShift={handleCloseShift}
             onReturnSale={handleReturnSale}
             onPayDebt={handlePayDebt}
+            onAddExpense={(exp) => setExpenses(prev => [...prev, exp])}
+            onDeleteExpense={(id) => setExpenses(prev => prev.filter(e => e.id !== id))}
           />
         )}
 

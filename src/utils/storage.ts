@@ -1,4 +1,4 @@
-import { Product, Category, Sale, Debt, StoreSettings, Cashier, Store } from '../types';
+import { Product, Category, Sale, Debt, StoreSettings, Cashier, Store, Expense } from '../types';
 
 const KEYS = {
   products: 'pos_products',
@@ -93,6 +93,16 @@ export function loadStoreData<T>(storeId: string, key: string): T | null {
 
 export function saveStoreData<T>(storeId: string, key: string, data: T) {
   localStorage.setItem(`pos_${storeId}_${key}`, JSON.stringify(data));
+}
+
+export function loadExpenses(storeId: string): Expense[] | null {
+  try {
+    const d = localStorage.getItem(`pos_${storeId}_expenses`);
+    return d ? JSON.parse(d) : null;
+  } catch { return null; }
+}
+export function saveExpenses(storeId: string, data: Expense[]) {
+  localStorage.setItem(`pos_${storeId}_expenses`, JSON.stringify(data));
 }
 
 export function exportAllData(): string {

@@ -1,58 +1,59 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, CheckCircle } from 'lucide-react';
+import QRCode from 'qrcode';
 
 const QR_SYSTEMS = [
-  { id: 'click',    name: 'Click',     short: 'CLICK', bg: '#E8F4FF', color: '#0077BB' },
-  { id: 'payme',    name: 'Payme',     short: 'PAY',   bg: '#E6F7F4', color: '#0F8A7A' },
-  { id: 'uzum',     name: 'Uzum Bank', short: 'UZUM',  bg: '#FFF3EE', color: '#CC4A18' },
-  { id: 'apelsin',  name: 'Apelsin',   short: 'APS',   bg: '#FFF0EB', color: '#CC3D00' },
-  { id: 'humans',   name: 'Humans',    short: 'HUM',   bg: '#F3EEFF', color: '#5228BE' },
-  { id: 'zoodpay',  name: 'Zoodpay',   short: 'ZOO',   bg: '#E8F3FC', color: '#1A7AB0' },
+  { id: 'click',   name: 'Click',     short: 'CLICK', bg: '#E8F4FF', color: '#0077BB' },
+  { id: 'payme',   name: 'Payme',     short: 'PAY',   bg: '#E6F7F4', color: '#0F8A7A' },
+  { id: 'uzum',    name: 'Uzum Bank', short: 'UZUM',  bg: '#FFF3EE', color: '#CC4A18' },
+  { id: 'apelsin', name: 'Apelsin',   short: 'APS',   bg: '#FFF0EB', color: '#CC3D00' },
+  { id: 'humans',  name: 'Humans',    short: 'HUM',   bg: '#F3EEFF', color: '#5228BE' },
+  { id: 'zoodpay', name: 'Zoodpay',   short: 'ZOO',   bg: '#E8F3FC', color: '#1A7AB0' },
 ];
+
+function buildPaymentUrl(system: string, merchantId: string, amount: number): string {
+  const orderId = `POS-${Date.now()}`;
+  const mid = merchantId || 'demo';
+  switch (system) {
+    case 'click':
+      return `https://my.click.uz/services/pay?service_id=${mid}&merchant_id=${mid}&amount=${amount}&transaction_param=${orderId}`;
+    case 'payme': {
+      const params = btoa(`m=${mid};ac.order_id=${orderId};a=${amount * 100}`);
+      return `https://checkout.paycom.uz/${params}`;
+    }
+    case 'uzum':
+      return `uzumbank://pay?merchant_id=${mid}&amount=${amount}&order_id=${orderId}`;
+    case 'apelsin':
+      return `apelsin://pay?merchant=${mid}&amount=${amount}&order=${orderId}`;
+    case 'humans':
+      return `humans://pay?merchant=${mid}&amount=${amount}&order=${orderId}`;
+    default:
+      return `${system}://pay?merchant=${mid}&amount=${amount}&order=${orderId}`;
+  }
+}
 
 interface Props {
   isOpen: boolean;
   amount: number;
   storeName: string;
+  merchantId: string;
   onClose: () => void;
   onConfirm: () => void;
 }
 
-export default function QRPaymentModal({ isOpen, amount, storeName, onClose, onConfirm }: Props) {
+export default function QRPaymentModal({ isOpen, amount, storeName, merchantId, onClose, onConfirm }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!selected || !canvasRef.current) return;
-    const text = `${storeName}|${amount}|${selected}|${Date.now()}`;
-    drawQR(canvasRef.current, text);
-  }, [selected, amount, storeName]);
-
-  function drawQR(canvas: HTMLCanvasElement, text: string) {
-    const size = 180;
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, size, size);
-    const cells = 21;
-    const cell = Math.floor(size / cells);
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) hash = ((hash << 5) - hash) + text.charCodeAt(i);
-    ctx.fillStyle = '#1E293B';
-    for (let r = 0; r < cells; r++) {
-      for (let c = 0; c < cells; c++) {
-        const isCorner = (r < 7 && c < 7) || (r < 7 && c > cells-8) || (r > cells-8 && c < 7);
-        const val = isCorner ? 1 : ((hash ^ (r * 31 + c * 17)) % 2);
-        if (val) ctx.fillRect(c * cell + 2, r * cell + 2, cell - 1, cell - 1);
-      }
-    }
-    [[0,0],[0,cells-7],[cells-7,0]].forEach(([r,c]) => {
-      ctx.strokeStyle = '#1E293B';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(c * cell + 2, r * cell + 2, 7 * cell - 2, 7 * cell - 2);
-    });
-  }
+    if (!selected) { setQrDataUrl(''); return; }
+    setLoading(true);
+    const url = buildPaymentUrl(selected, merchantId, amount);
+    QRCode.toDataURL(url, { width: 200, margin: 2, color: { dark: '#1E293B', light: '#ffffff' } })
+      .then(dataUrl => { setQrDataUrl(dataUrl); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [selected, amount, merchantId]);
 
   if (!isOpen) return null;
 
@@ -68,9 +69,10 @@ export default function QRPaymentModal({ isOpen, amount, storeName, onClose, onC
             <X className="w-5 h-5" />
           </button>
         </div>
-        <p className="text-[22px] font-medium text-[#2563EB] text-center mb-5">
+        <p className="text-[22px] font-medium text-[#2563EB] text-center mb-1">
           {amount.toLocaleString('uz-UZ')} so'm
         </p>
+        <p className="text-center text-[11px] text-slate-400 mb-4">{storeName}</p>
 
         <div className="grid grid-cols-3 gap-2 mb-5">
           {QR_SYSTEMS.map(sys => (
@@ -94,8 +96,19 @@ export default function QRPaymentModal({ isOpen, amount, storeName, onClose, onC
 
         {selected && (
           <div className="flex flex-col items-center mb-5">
-            <canvas ref={canvasRef} className="rounded-xl border border-[#E2E8F0]" />
+            {loading ? (
+              <div className="w-[200px] h-[200px] flex items-center justify-center border border-[#E2E8F0] rounded-xl">
+                <div className="w-8 h-8 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : qrDataUrl ? (
+              <img src={qrDataUrl} alt="QR kod" className="rounded-xl border border-[#E2E8F0]" width={200} height={200} />
+            ) : null}
             <p className="text-[13px] text-[#64748B] mt-2">Telefonda skanerlang</p>
+            {!merchantId && (
+              <p className="text-[11px] text-amber-600 font-semibold mt-1">
+                Sozlamalarda Merchant ID kiriting
+              </p>
+            )}
           </div>
         )}
 
@@ -104,6 +117,7 @@ export default function QRPaymentModal({ isOpen, amount, storeName, onClose, onC
             ↑ Avval to'lov tizimini tanlang
           </p>
         )}
+
         <div className="grid grid-cols-2 gap-3">
           <button onClick={onClose}
             className="py-3 rounded-xl border border-[#E2E8F0] text-[#64748B] font-medium text-sm cursor-pointer hover:bg-slate-50">
