@@ -117,6 +117,7 @@ export default function AdminView({
     name: '', pin: '', storeLabel: '', role: 'cashier', isActive: true,
   });
   const [cashierFormError, setCashierFormError] = useState<string>('');
+  const [cashierFieldErrors, setCashierFieldErrors] = useState<{ name?: string; storeLabel?: string; pin?: string }>({});
   
   const [searchQuery, setSearchQuery] = useState<string>('');
   
@@ -254,6 +255,14 @@ export default function AdminView({
     URL.revokeObjectURL(url);
   };
 
+  // Compact money formatter (e.g. 303,663,500 → "303.7M so'm")
+  function fmtCompact(n: number): string {
+    if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
+    if (n >= 1_000_000)     return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000)         return `${(n / 1_000).toFixed(0)}K`;
+    return n.toLocaleString('uz-UZ');
+  }
+
   // KPI calculations
   const totalStockValue = products.reduce((acc, p) => acc + (p.price * p.stock), 0);
   const totalInventoryTurnover = products.reduce((acc, p) => acc + ((p.soldCount || 0) * p.price), 0);
@@ -317,6 +326,29 @@ export default function AdminView({
     if (formData.stock < 0) errs.stock = "Manfiy bo'lmasin";
     if (!formData.barcode.trim()) errs.barcode = "Barcode kiritilishi shart";
     return errs;
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      img.src = ev.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX = 200;
+        const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const base64 = canvas.toDataURL('image/jpeg', 0.75);
+        setFormData(prev => ({ ...prev, image: base64 }));
+      };
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleProductSubmit = (e: React.FormEvent) => {
@@ -469,8 +501,8 @@ export default function AdminView({
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Umumiy qiymat</p>
-                  <p className="text-xl font-black text-[#1E293B] mt-0.5 truncate">
-                    {new Intl.NumberFormat('uz-UZ').format(totalStockValue)} UZS
+                  <p className="text-xl font-black text-[#1E293B] mt-0.5 leading-tight" title={new Intl.NumberFormat('uz-UZ').format(totalStockValue) + ' UZS'}>
+                    {fmtCompact(totalStockValue)} UZS
                   </p>
                 </div>
               </div>
@@ -482,8 +514,8 @@ export default function AdminView({
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Oylik aylanma</p>
-                  <p className="text-xl font-black text-[#1E293B] mt-0.5 truncate">
-                    {new Intl.NumberFormat('uz-UZ').format(totalInventoryTurnover)} UZS
+                  <p className="text-xl font-black text-[#1E293B] mt-0.5 leading-tight" title={new Intl.NumberFormat('uz-UZ').format(totalInventoryTurnover) + ' UZS'}>
+                    {fmtCompact(totalInventoryTurnover)} UZS
                   </p>
                 </div>
               </div>
@@ -591,12 +623,15 @@ export default function AdminView({
                       const categoryObj = categories.find(c => c.id === product.category);
                       
                       return (
-                        <tr key={product.id} className="hover:bg-[#f0f3ff]/40 text-xs text-[#1E293B] font-semibold transition-all">
+                        <tr key={product.id} onClick={() => handleOpenEdit(product)} className="hover:bg-[#f0f3ff]/40 text-xs text-[#1E293B] font-semibold transition-all cursor-pointer">
                           <td className="px-5 py-4">
                             <div className="flex items-center gap-3">
-                              <span className="p-1.5 bg-[#eeefff] text-[#2563eb] rounded-lg">
-                                {renderIcon(product.icon || 'Box', 'w-4 h-4')}
-                              </span>
+                              <div className="w-9 h-9 rounded-xl overflow-hidden bg-[#eeefff] flex items-center justify-center shrink-0">
+                                {product.image
+                                  ? <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                                  : <span className="text-[#2563eb]">{renderIcon(product.icon || 'Box', 'w-4 h-4')}</span>
+                                }
+                              </div>
                               <div>
                                 <p className="font-bold text-[#1E293B]">{product.name}</p>
                                 <p className="text-[10px] text-[#94A3B8] font-mono">Shtrix: {product.barcode}</p>
@@ -638,7 +673,7 @@ export default function AdminView({
                           </td>
 
                           {/* ⭐ Vitrina toggle */}
-                          <td className="px-5 py-4 text-center">
+                          <td className="px-5 py-4 text-center" onClick={e => e.stopPropagation()}>
                             <button
                               onClick={() => onUpdateProduct({
                                 ...product,
@@ -673,7 +708,7 @@ export default function AdminView({
                             )}
                           </td>
 
-                          <td className="px-5 py-4 text-right">
+                          <td className="px-5 py-4 text-right" onClick={e => e.stopPropagation()}>
                             <div className="flex justify-end gap-1.5">
                               <button
                                 onClick={() => handleOpenEdit(product)}
@@ -854,6 +889,29 @@ export default function AdminView({
                       className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-medium focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-sm text-[#1E293B] font-mono"
                     />
                     <p className="text-[10px] text-slate-400">QR kod to&apos;lovlarda ishlatiladi. To&apos;lov tizimingizdan oling.</p>
+                  </div>
+
+                  {/* Telegram sozlamalari */}
+                  <div className="space-y-2 pt-2">
+                    <label className="text-xs font-bold text-[#64748B] block">Telegram Bot Token</label>
+                    <input
+                      type="text"
+                      value={settingsForm.telegramBotToken || ''}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, telegramBotToken: e.target.value })}
+                      placeholder="123456789:ABCdefGHI..."
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-medium focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-sm text-[#1E293B] font-mono"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-[#64748B] block">Telegram Chat ID</label>
+                    <input
+                      type="text"
+                      value={settingsForm.telegramChatId || ''}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, telegramChatId: e.target.value })}
+                      placeholder="-100123456789 yoki @channel"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-medium focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-sm text-[#1E293B] font-mono"
+                    />
+                    <p className="text-[10px] text-slate-400">Savdo, nasiya va kam zaxira haqida Telegram xabarlari olish uchun.</p>
                   </div>
                 </div>
 
@@ -1043,6 +1101,7 @@ export default function AdminView({
                   setEditingCashier(null);
                   setCashierForm({ name: '', pin: '', storeLabel: '', role: 'cashier', isActive: true });
                   setCashierFormError('');
+                  setCashierFieldErrors({});
                   setIsCashierModalOpen(true);
                 }}
                 className="bg-[#2563eb] hover:bg-[#004ac6] active:scale-95 text-white px-5 py-3 rounded-xl text-sm font-bold flex items-center gap-2 cursor-pointer transition-all shadow-md select-none shrink-0"
@@ -1092,6 +1151,7 @@ export default function AdminView({
                           setEditingCashier(cashier);
                           setCashierForm({ name: cashier.name, pin: cashier.pin, storeLabel: cashier.storeLabel, role: cashier.role, isActive: cashier.isActive });
                           setCashierFormError('');
+                          setCashierFieldErrors({});
                           setIsCashierModalOpen(true);
                         }}
                         className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border border-[#dee8ff] bg-[#f0f3ff] text-[#2563eb] text-xs font-bold hover:bg-[#dee8ff] cursor-pointer transition-colors"
@@ -1255,9 +1315,21 @@ export default function AdminView({
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                if (!cashierForm.name.trim()) { setCashierFormError("Kasir ismini kiriting!"); return; }
-                if (!cashierForm.storeLabel.trim()) { setCashierFormError("Do'kon/Filial nomini kiriting!"); return; }
-                if (cashierForm.pin.length !== 4) { setCashierFormError("PIN aniq 4 raqamdan iborat bo'lishi kerak!"); return; }
+                const fe: { name?: string; storeLabel?: string; pin?: string } = {};
+                if (cashierForm.name.trim().length < 3) fe.name = "Ism kamida 3 ta belgi bo'lishi kerak";
+                if (!cashierForm.storeLabel.trim()) fe.storeLabel = "Do'kon/Filial nomini kiriting";
+                if (!/^\d{4}$/.test(cashierForm.pin)) fe.pin = "PIN aynan 4 ta raqam bo'lishi kerak";
+                if (Object.keys(fe).length > 0) { setCashierFieldErrors(fe); return; }
+
+                // "Egasi" roli cheklovi
+                if (cashierForm.role === 'owner') {
+                  const existingOwner = cashiers.find(c => c.role === 'owner' && c.id !== editingCashier?.id);
+                  if (existingOwner) {
+                    if (!confirm(`Tizimda allaqachon "${existingOwner.name}" egasi mavjud. Shunga qaramay yangi egasi qo'shilsinmi?`)) return;
+                  }
+                }
+
+                setCashierFieldErrors({});
                 setCashierFormError('');
                 if (editingCashier) {
                   onUpdateCashier({ ...editingCashier, ...cashierForm });
@@ -1274,39 +1346,40 @@ export default function AdminView({
                 </div>
               )}
               <div className="space-y-1">
-                <label className="text-xs font-bold text-[#64748B]">Kasir ismi</label>
+                <label className="text-xs font-bold text-[#64748B]">Kasir ismi <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   value={cashierForm.name}
-                  onChange={e => { setCashierForm({ ...cashierForm, name: e.target.value }); setCashierFormError(''); }}
+                  onChange={e => { setCashierForm({ ...cashierForm, name: e.target.value }); setCashierFieldErrors(fe => ({ ...fe, name: '' })); }}
                   placeholder="Asadbek Toshmatov..."
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-semibold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs"
+                  className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl font-semibold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs ${cashierFieldErrors.name ? 'border-red-400 bg-red-50' : 'border-[#CBD5E1]'}`}
                 />
+                {cashierFieldErrors.name && <p className="text-[10px] text-red-600 font-semibold">{cashierFieldErrors.name}</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#64748B]">Do'kon / Filial</label>
+                  <label className="text-xs font-bold text-[#64748B]">Do'kon / Filial <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={cashierForm.storeLabel}
-                    onChange={e => { setCashierForm({ ...cashierForm, storeLabel: e.target.value }); setCashierFormError(''); }}
+                    onChange={e => { setCashierForm({ ...cashierForm, storeLabel: e.target.value }); setCashierFieldErrors(fe => ({ ...fe, storeLabel: '' })); }}
                     placeholder="1-Do'kon..."
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-[#CBD5E1] rounded-xl font-semibold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs"
+                    className={`w-full px-4 py-2.5 bg-slate-50 border rounded-xl font-semibold focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-xs ${cashierFieldErrors.storeLabel ? 'border-red-400 bg-red-50' : 'border-[#CBD5E1]'}`}
                   />
+                  {cashierFieldErrors.storeLabel && <p className="text-[10px] text-red-600 font-semibold">{cashierFieldErrors.storeLabel}</p>}
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#64748B]">PIN-kod (4 raqam)</label>
+                  <label className="text-xs font-bold text-[#64748B]">PIN-kod <span className="text-red-500">*</span></label>
                   <div className="relative">
                     <input
                       type={showPinModal ? 'text' : 'password'}
-                      required
                       maxLength={4}
                       value={cashierForm.pin}
-                      onChange={e => { setCashierForm({ ...cashierForm, pin: e.target.value.replace(/\D/g, '') }); setCashierFormError(''); }}
+                      onChange={e => { setCashierForm({ ...cashierForm, pin: e.target.value.replace(/\D/g, '') }); setCashierFieldErrors(fe => ({ ...fe, pin: '' })); }}
                       placeholder="••••"
-                      className="w-full px-4 py-2.5 pr-10 bg-slate-50 border border-[#CBD5E1] rounded-xl font-bold font-mono tracking-widest focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-base text-center"
+                      className={`w-full px-4 py-2.5 pr-10 bg-slate-50 border rounded-xl font-bold font-mono tracking-widest focus:ring-2 focus:ring-[#2563eb]/20 outline-none text-base text-center ${cashierFieldErrors.pin ? 'border-red-400 bg-red-50' : 'border-[#CBD5E1]'}`}
                     />
                     <button
                       type="button"
@@ -1317,6 +1390,7 @@ export default function AdminView({
                       {showPinModal ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+                  {cashierFieldErrors.pin && <p className="text-[10px] text-red-600 font-semibold mt-1">{cashierFieldErrors.pin}</p>}
                 </div>
               </div>
 
@@ -1327,14 +1401,23 @@ export default function AdminView({
                     <button
                       key={role}
                       type="button"
-                      onClick={() => setCashierForm({ ...cashierForm, role })}
+                      onClick={() => {
+                        if (role === 'owner') {
+                          const existing = cashiers.find(c => c.role === 'owner' && c.id !== editingCashier?.id);
+                          if (existing) setCashierFormError(`⚠️ "${existing.name}" allaqachon egasi. Ikki egasi bo'lishi mumkin.`);
+                          else setCashierFormError('');
+                        } else {
+                          setCashierFormError('');
+                        }
+                        setCashierForm({ ...cashierForm, role });
+                      }}
                       className={`py-2.5 rounded-xl border-2 text-xs font-bold transition-all cursor-pointer ${
                         cashierForm.role === role
                           ? 'border-[#2563eb] bg-[#eeefff] text-[#2563eb]'
                           : 'border-[#E2E8F0] bg-white text-slate-600 hover:bg-slate-50'
                       }`}
                     >
-                      {role === 'owner' ? 'Egasi' : 'Kassir'}
+                      {role === 'owner' ? '👑 Egasi' : 'Kassir'}
                     </button>
                   ))}
                 </div>
@@ -1476,6 +1559,36 @@ export default function AdminView({
                       <option key={cat.id} value={cat.id}>{cat.name}</option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              {/* § 1.5 — Rasm */}
+              <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+                  <span style={{ fontSize:'10px', fontWeight:800, color:'#94A3B8', letterSpacing:'0.1em', textTransform:'uppercase' }}>01b · Mahsulot rasmi</span>
+                  <div style={{ flex:1, height:'1px', background:'#E2E8F0' }} />
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
+                  {/* Preview */}
+                  <div style={{ width:'64px', height:'64px', borderRadius:'12px', border:'1.5px solid #E2E8F0', background:'#F8FAFC', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    {formData.image
+                      ? <img src={formData.image} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                      : <span style={{ fontSize:'24px' }}>🖼️</span>
+                    }
+                  </div>
+                  <div style={{ flex:1, display:'flex', flexDirection:'column', gap:'6px' }}>
+                    <label style={{ padding:'8px 14px', background:'#2563eb', color:'white', borderRadius:'10px', fontSize:'11px', fontWeight:700, cursor:'pointer', textAlign:'center', display:'block' }}>
+                      Rasm yuklash
+                      <input type="file" accept="image/*" onChange={handleImageUpload} style={{ display:'none' }} />
+                    </label>
+                    {formData.image && (
+                      <button type="button" onClick={() => setFormData(prev => ({ ...prev, image: '' }))}
+                        style={{ padding:'6px 14px', background:'#FEF2F2', color:'#EF4444', border:'1px solid #FECACA', borderRadius:'10px', fontSize:'11px', fontWeight:700, cursor:'pointer' }}>
+                        O'chirish
+                      </button>
+                    )}
+                    <p style={{ fontSize:'10px', color:'#94A3B8', margin:0 }}>Max 200×200px ga avtomatik siqiladi (JPEG)</p>
+                  </div>
                 </div>
               </div>
 

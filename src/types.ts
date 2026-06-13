@@ -81,6 +81,8 @@ export interface StoreSettings {
   merchantId: string;
   paperSize: '58mm' | '80mm' | 'A4';
   operatorPin: string;
+  telegramBotToken: string;
+  telegramChatId: string;
 }
 
 export interface Expense {

@@ -11,10 +11,14 @@ import {
   Sparkles,
   ChevronDown,
   Check,
+  Sun,
+  Moon,
+  LayoutDashboard,
 } from 'lucide-react';
 import { Product, Category, CartItem, Debt, Sale, ActiveShift, StoreSettings, Cashier, Store as StoreType, Expense } from './types';
 
 import { loadCashiers, saveCashiers, loadStores, saveStores, loadActiveStoreId, saveActiveStoreId, loadStoreData, saveStoreData, loadExpenses, saveExpenses } from './utils/storage';
+import { sendTelegramMessage } from './utils/telegram';
 import { fmtStore } from './utils/format';
 import {
   INITIAL_PRODUCTS,
@@ -32,6 +36,7 @@ import HisobotView from './components/HisobotView';
 import BarkodView from './components/BarkodView';
 import SmenaView from './components/SmenaView';
 import AIView from './components/AIView';
+import DashboardView from './components/DashboardView';
 
 export default function App() {
   // Authentication Gate State
@@ -100,7 +105,17 @@ export default function App() {
     return loadExpenses(sid) ?? [];
   });
   useEffect(() => { saveExpenses(activeStoreIdRef.current, expenses); }, [expenses]);
-  const [activeTab, setActiveTab] = useState<'kassa' | 'admin' | 'hisobot' | 'barkod' | 'smena' | 'ai'>('kassa');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'kassa' | 'admin' | 'hisobot' | 'barkod' | 'smena' | 'ai'>('kassa');
+
+  // Dark mode
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    return localStorage.getItem('darkMode') === 'true';
+  });
+  useEffect(() => {
+    localStorage.setItem('darkMode', String(isDarkMode));
+    if (isDarkMode) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
+  }, [isDarkMode]);
 
   // Multi-cart state (3 parallel carts)
   const [carts, setCarts] = useState<CartItem[][]>([[], [], []]);
@@ -132,7 +147,7 @@ export default function App() {
     setCashierName(cashier.name);
     setCashierRole(cashier.role);
     setIsLoggedIn(true);
-    setActiveTab(cashier.role === 'owner' ? 'admin' : 'kassa');
+    setActiveTab(cashier.role === 'owner' ? 'dashboard' : 'kassa');
   };
 
   const handleLogout = () => {
@@ -257,6 +272,31 @@ export default function App() {
 
     setSales((prevSales) => [newSale, ...prevSales]);
 
+    // Telegram: savdo xabarnomasi
+    sendTelegramMessage(
+      settings.telegramBotToken,
+      settings.telegramChatId,
+      `🛒 <b>Yangi savdo</b> — ${settings.storeName}\n` +
+      `💰 Summa: <b>${finalAmount.toLocaleString('uz-UZ')} so'm</b>\n` +
+      `💳 To'lov: ${paymentMethod}\n` +
+      `👤 Mijoz: ${customerName || 'Oddiy mijoz'}\n` +
+      `🧾 Chek: ${newSaleId}\n` +
+      `👷 Kassir: ${cashierName}`
+    );
+
+    // Telegram: kam zaxira ogohlantirish
+    const newlyLowStock = currentCart
+      .map(item => products.find(p => p.id === item.product.id))
+      .filter((p): p is Product => !!p && (p.stock - (currentCart.find(ci => ci.product.id === p.id)?.quantity || 0)) <= (p.lowStockThreshold || 5) && p.stock > 0);
+    if (newlyLowStock.length > 0) {
+      const list = newlyLowStock.map(p => `• ${p.name}: ${p.stock - (currentCart.find(ci => ci.product.id === p.id)?.quantity || 0)} ta`).join('\n');
+      sendTelegramMessage(
+        settings.telegramBotToken,
+        settings.telegramChatId,
+        `⚠️ <b>Kam qolgan mahsulotlar</b> — ${settings.storeName}\n${list}`
+      );
+    }
+
     // 3. Register debt log dynamically if payment type is Debt
     if (paymentMethod === 'Nasiya') {
       const newDebt: Debt = {
@@ -269,6 +309,16 @@ export default function App() {
         paidAmount: 0,
       };
       setDebts((prevDebts) => [newDebt, ...prevDebts]);
+
+      // Telegram: nasiya xabarnomasi
+      sendTelegramMessage(
+        settings.telegramBotToken,
+        settings.telegramChatId,
+        `📋 <b>Nasiya qo'shildi</b> — ${settings.storeName}\n` +
+        `👤 Mijoz: <b>${customerName || 'Noma\'lum'}</b>\n` +
+        `💸 Miqdor: <b>${finalAmount.toLocaleString('uz-UZ')} so'm</b>\n` +
+        `📅 Sana: ${new Date().toISOString().substring(0, 10)}`
+      );
     }
 
     // 4. Update active shift diagnostics
@@ -393,10 +443,10 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F9F9FF] select-none text-[#1E293B] antialiased">
-      
+    <div className="min-h-screen flex flex-col bg-[#F9F9FF] dark:bg-slate-950 select-none text-[#1E293B] dark:text-slate-100 antialiased">
+
       {/* Universal Top Application Bar */}
-      <header className="bg-white border-b border-[#E2E8F0] shadow-sm shrink-0 sticky top-0 z-40">
+      <header className="bg-white dark:bg-slate-900 border-b border-[#E2E8F0] dark:border-slate-700 shadow-sm shrink-0 sticky top-0 z-40">
         <div className="w-full px-6 h-16 flex items-center justify-between">
           
           {/* Logo Brand container */}
@@ -446,13 +496,26 @@ export default function App() {
 
           {/* Core horizontal app headers navigation */}
           <nav className="flex items-center gap-1 sm:gap-2">
+            {/* Dashboard — barcha rollar uchun */}
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                activeTab === 'dashboard'
+                  ? 'bg-[#2563eb]/10 text-[#2563eb]'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              <span className="hidden sm:inline">Bosh sahifa</span>
+            </button>
+
             {!isOwner && (
               <button
                 onClick={() => setActiveTab('kassa')}
                 className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
                   activeTab === 'kassa'
                     ? 'bg-[#2563eb]/10 text-[#2563eb]'
-                    : 'text-slate-600 hover:bg-slate-50'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                 }`}
               >
                 <ShoppingBag className="w-4 h-4" />
@@ -466,25 +529,11 @@ export default function App() {
                 className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
                   activeTab === 'smena'
                     ? 'bg-[#2563eb]/10 text-[#2563eb]'
-                    : 'text-slate-600 hover:bg-slate-50'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                 }`}
               >
                 <Clock className="w-4 h-4" />
                 <span className="hidden sm:inline">Smena</span>
-              </button>
-            )}
-
-            {isOwner && (
-              <button
-                onClick={() => setActiveTab('kassa')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-                  activeTab === 'kassa'
-                    ? 'bg-[#2563eb]/10 text-[#2563eb]'
-                    : 'text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <ShoppingBag className="w-4 h-4" />
-                <span className="hidden sm:inline">Kassa</span>
               </button>
             )}
 
@@ -495,7 +544,7 @@ export default function App() {
                 className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
                   activeTab === 'admin'
                     ? 'bg-[#2563eb]/10 text-[#2563eb]'
-                    : 'text-slate-600 hover:bg-slate-50'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                 }`}
               >
                 <Settings className="w-4 h-4" />
@@ -509,7 +558,7 @@ export default function App() {
                 className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
                   activeTab === 'hisobot'
                     ? 'bg-[#2563eb]/10 text-[#2563eb]'
-                    : 'text-slate-600 hover:bg-slate-50'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                 }`}
               >
                 <BarChart3 className="w-4 h-4" />
@@ -523,7 +572,7 @@ export default function App() {
                 className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
                   activeTab === 'barkod'
                     ? 'bg-[#2563eb]/10 text-[#2563eb]'
-                    : 'text-slate-600 hover:bg-slate-50'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                 }`}
               >
                 <QrCode className="w-4 h-4" />
@@ -535,8 +584,8 @@ export default function App() {
               onClick={() => setActiveTab('ai')}
               className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
                 activeTab === 'ai'
-                  ? 'bg-violet-100 text-violet-700'
-                  : 'text-slate-600 hover:bg-slate-50'
+                  ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
               }`}
             >
               <Sparkles className="w-4 h-4" />
@@ -556,10 +605,19 @@ export default function App() {
               </div>
             </div>
 
+            {/* Dark mode toggle */}
+            <button
+              onClick={() => setIsDarkMode(v => !v)}
+              title={isDarkMode ? "Yorug' rejim" : "Qorong'i rejim"}
+              className="p-2 text-slate-500 dark:text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-xl transition-all cursor-pointer"
+            >
+              {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+
             <button
               onClick={handleLogout}
               title="Tizimdan chiqish (Lock screen)"
-              className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all cursor-pointer select-none"
+              className="p-2 text-slate-500 dark:text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all cursor-pointer select-none"
             >
               <LogOut className="w-5 h-5" />
             </button>
@@ -570,6 +628,18 @@ export default function App() {
 
       {/* Primary Dynamic Applet Render Sandbox canvas */}
       <main className="flex-grow flex flex-col min-h-0 relative">
+        {activeTab === 'dashboard' && (
+          <DashboardView
+            products={products}
+            sales={sales}
+            debts={debts}
+            expenses={expenses}
+            settings={settings}
+            activeShift={activeShift}
+            cashierName={cashierName}
+          />
+        )}
+
         {activeTab === 'kassa' && (
           <KassaView
             products={products}

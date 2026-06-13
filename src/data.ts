@@ -200,4 +200,6 @@ export const INITIAL_SETTINGS: StoreSettings = {
   merchantId: '',
   paperSize: '58mm',
   operatorPin: '1234',
+  telegramBotToken: '',
+  telegramChatId: '',
 };

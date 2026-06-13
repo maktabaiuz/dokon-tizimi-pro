@@ -78,6 +78,7 @@ export default function HisobotView({
   const [payingDebtId, setPayingDebtId] = useState<string | null>(null);
   const [payAmountInput, setPayAmountInput] = useState<string>('');
   const [payError, setPayError] = useState<string>('');
+  const [payMethod, setPayMethod] = useState<'Naqd' | 'Karta'>('Naqd');
 
   // Smena hisobot breakdown (bugungi sotuvlardan)
   const shiftNaqdTotal = sales
@@ -140,21 +141,29 @@ export default function HisobotView({
 
   // CSV export
   const handleExportCSV = () => {
-    const headers = ['Sana', 'Kassir', 'Mahsulotlar', 'Summa', "To'lov usuli"];
-    const rows = filteredSales.map(s => [
+    if (filteredSalesLog.length === 0) {
+      alert("Eksport qilish uchun ma'lumot yo'q");
+      return;
+    }
+    const headers = ['Chek #', 'Sana', 'Kassir', 'Mijoz', 'Mahsulotlar', "To'lov usuli", 'Summa (UZS)'];
+    const rows = filteredSalesLog.map(s => [
+      s.id,
       s.timestamp,
       s.cashier,
+      s.customerName,
       s.items.map((it: any) => `${it.name} x${it.quantity}`).join('; '),
-      s.totalAmount.toString(),
       s.paymentMethod,
+      s.totalAmount.toString(),
     ]);
-    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `hisobot_${appliedStart}_${appliedEnd}.csv`;
+    a.download = `savdo-tarixi-${new Date().toISOString().substring(0, 10)}.csv`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
@@ -665,15 +674,54 @@ export default function HisobotView({
                   </div>
 
                   {isPayingThis && !isPaid && (
-                    <div className="flex flex-col gap-1.5 bg-slate-50 rounded-xl p-2 border border-[#E2E8F0]">
-                      <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-2 bg-blue-50 rounded-xl p-3 border border-blue-100">
+                      {/* Jami qarz */}
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-500 font-semibold">Jami qarz:</span>
+                        <span className="font-black text-red-600 font-mono">{dt.amount.toLocaleString()} UZS</span>
+                      </div>
+                      {dt.paidAmount > 0 && (
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-500 font-semibold">To'langan:</span>
+                          <span className="font-bold text-green-600 font-mono">{dt.paidAmount.toLocaleString()} UZS</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between text-[11px] border-t border-blue-200 pt-1">
+                        <span className="text-slate-700 font-bold">Qolgan qarz:</span>
+                        <span className="font-black text-[#2563eb] font-mono">{remaining.toLocaleString()} UZS</span>
+                      </div>
+
+                      {/* To'lov usuli */}
+                      <div className="flex gap-1.5">
+                        {(['Naqd', 'Karta'] as const).map(m => (
+                          <button key={m} type="button" onClick={() => setPayMethod(m)}
+                            className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${payMethod === m ? 'bg-[#2563eb] text-white border-[#2563eb]' : 'bg-white text-slate-600 border-[#CBD5E1] hover:bg-slate-50'}`}>
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Summa input */}
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">To'lanadigan summa (UZS)</label>
                         <input
                           type="number"
                           value={payAmountInput}
                           onChange={(e) => { setPayAmountInput(e.target.value); setPayError(''); }}
-                          placeholder={`Maks: ${remaining.toLocaleString()}`}
-                          className={`flex-1 px-3 py-1.5 bg-white border rounded-lg font-mono text-xs outline-none focus:ring-2 focus:ring-[#2563eb]/20 ${payError ? 'border-red-400' : 'border-[#CBD5E1]'}`}
+                          placeholder={`Maksimal: ${remaining.toLocaleString()}`}
+                          className={`w-full px-3 py-1.5 bg-white border rounded-lg font-mono text-xs outline-none focus:ring-2 focus:ring-[#2563eb]/20 ${payError ? 'border-red-400' : 'border-[#CBD5E1]'}`}
                         />
+                        {payError && <p className="text-[10px] text-red-600 font-bold mt-0.5">{payError}</p>}
+                      </div>
+
+                      {/* Tugmalar */}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => { setPayingDebtId(null); setPayAmountInput(''); setPayError(''); }}
+                          className="flex-1 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 text-[11px] font-bold cursor-pointer hover:bg-slate-50 transition-colors"
+                        >
+                          Bekor qilish
+                        </button>
                         <button
                           onClick={() => {
                             const val = parseFloat(payAmountInput) || 0;
@@ -684,12 +732,11 @@ export default function HisobotView({
                             setPayAmountInput('');
                             setPayError('');
                           }}
-                          className="bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg cursor-pointer transition-colors shrink-0"
+                          className="flex-1 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-[11px] font-bold cursor-pointer transition-colors"
                         >
-                          Tasdiqlash
+                          ✓ Tasdiqlash ({payMethod})
                         </button>
                       </div>
-                      {payError && <p className="text-[10px] text-red-600 font-bold px-1">{payError}</p>}
                     </div>
                   )}
                 </div>

@@ -103,6 +103,17 @@ export default function BarkodView({ products }: BarkodViewProps) {
               </div>
             </div>
 
+            {/* Mahsulot rasmi thumbnail */}
+            {selectedProduct?.image && (
+              <div className="flex items-center gap-3 p-3 bg-slate-50 border border-[#E2E8F0] rounded-xl">
+                <img src={selectedProduct.image} alt={selectedProduct.name} className="w-12 h-12 rounded-lg object-cover border border-[#E2E8F0]" />
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-[#1E293B] truncate">{selectedProduct.name}</p>
+                  <p className="text-[10px] text-slate-400 font-mono">{selectedProduct.barcode}</p>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-1">
               <label className="text-xs font-bold text-[#64748B] block">Narxi (Kassadagi UZS)</label>
               <input
